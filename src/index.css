@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0f0f14;
+  --color-surface: #1a1a24;
+  --color-surface2: #24243a;
+  --color-border: #2a2a3e;
+  --color-accent: #6c5ce7;
+  --color-accent-hover: #7f70f0;
+  --color-red: #ff4757;
+  --color-green: #2ed573;
+  --color-yellow: #ffa502;
+  --color-text: #e8e8f0;
+  --color-muted: #8888a0;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-heading: 'Poppins', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-app-region: drag;
+  user-select: none;
+  overflow: hidden;
+}
+
+* {
+  -webkit-app-region: no-drag;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+
+/* Recording pulse */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--color-red);
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* Title bar drag region */
+.titlebar {
+  -webkit-app-region: drag;
+}
