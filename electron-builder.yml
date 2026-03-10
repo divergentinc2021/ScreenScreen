@@ -9,6 +9,16 @@ directories:
 files:
   - dist/**/*
   - node_modules/**/*
+  - "!node_modules/@esbuild/**"
+  - "!node_modules/esbuild/**"
+  - "!node_modules/vite/**"
+  - "!node_modules/@vitejs/**"
+  - "!node_modules/tailwindcss/**"
+  - "!node_modules/@tailwindcss/**"
+  - "!node_modules/typescript/**"
+  - "!node_modules/electron/**"
+  - "!node_modules/electron-builder/**"
+  - "!node_modules/concurrently/**"
   - "!node_modules/@huggingface/transformers/dist/onnxruntime-web/**"
 
 mac:
@@ -16,7 +26,8 @@ mac:
   target:
     - target: dmg
       arch:
-        - universal
+        - arm64
+        - x64
   darkModeSupport: true
 
 win:
