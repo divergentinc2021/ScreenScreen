@@ -57,7 +57,10 @@ declare global {
       getSettings: () => Promise<Settings>
       saveSettings: (settings: Settings) => Promise<void>
       openFolder: (meetingId: string) => Promise<void>
+      prepareModel: (modelName: string) => Promise<{ success: boolean; error?: string }>
+      getModelStatus: () => Promise<{ ready: boolean }>
       onTranscriptionProgress: (callback: (data: { meetingId: string; status: string; progress?: number }) => void) => () => void
+      onModelProgress: (callback: (data: { status: string; progress?: number }) => void) => () => void
     }
   }
 }

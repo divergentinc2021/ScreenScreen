@@ -114,9 +114,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function MeetingActions({ meetingId, hasTranscript, hasSummary }: { meetingId: string; hasTranscript: boolean; hasSummary: boolean }) {
-  const { transcriptionProgress, loadMeetings, selectMeeting, settings } = useMeetingStore()
+  const { transcriptionProgress, loadMeetings, selectMeeting, settings, setView } = useMeetingStore()
 
   const handleTranscribe = async () => {
+    // Check if Whisper is initialized first
+    const { ready } = await window.api.getModelStatus()
+    if (!ready) {
+      alert('Whisper is not initialized. Go to Settings and click "Initialize Whisper" first.')
+      setView('settings')
+      return
+    }
     try {
       await window.api.transcribe(meetingId)
       await loadMeetings()

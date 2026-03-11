@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 
@@ -7,43 +7,72 @@ type ProgressCallback = (progress: { status: string; progress?: number }) => voi
 
 export class Transcriber {
   private pipe: any = null
+  private modelReady = false
 
-  async ensureModel(onProgress: ProgressCallback) {
-    if (this.pipe) return
+  isModelReady(): boolean {
+    return this.modelReady
+  }
 
-    onProgress({ status: 'Loading Whisper model...', progress: 0 })
+  /**
+   * Download and prepare the Whisper model (called from Settings).
+   * Separating this from transcribe() so users can prep ahead of time.
+   */
+  async prepareModel(modelName: string, onProgress: ProgressCallback) {
+    onProgress({ status: 'Loading Whisper engine...', progress: 0 })
 
-    // Use Function trick to prevent TypeScript from converting import() to require()
-    // @huggingface/transformers is ESM-only and cannot be require()'d
     const importModule = new Function('specifier', 'return import(specifier)')
     const { pipeline, env } = await importModule('@huggingface/transformers')
     env.cacheDir = join(app.getPath('userData'), 'models')
 
-    this.pipe = await pipeline('automatic-speech-recognition', 'Xenova/whisper-small', {
+    onProgress({ status: 'Downloading model...', progress: 5 })
+
+    this.pipe = await pipeline('automatic-speech-recognition', modelName, {
       progress_callback: (data: any) => {
         if (data.status === 'progress') {
           onProgress({ status: 'Downloading model...', progress: Math.round(data.progress) })
+        } else if (data.status === 'ready') {
+          onProgress({ status: 'Model ready', progress: 100 })
         }
       }
     })
 
-    onProgress({ status: 'Model loaded', progress: 100 })
+    this.modelReady = true
+    onProgress({ status: 'Model ready', progress: 100 })
   }
 
+  /**
+   * Transcribe audio. Model must be prepared first via prepareModel().
+   */
   async transcribe(audioPath: string, onProgress: ProgressCallback) {
-    await this.ensureModel(onProgress)
+    if (!this.pipe) {
+      throw new Error('Model not loaded. Please download the model in Settings first.')
+    }
 
-    // Convert webm to 16kHz mono WAV using ffmpeg
-    onProgress({ status: 'Converting audio...', progress: 0 })
+    // Step 1: Convert WebM → 16kHz mono PCM WAV via ffmpeg
+    onProgress({ status: 'Converting audio format...', progress: 10 })
     const wavPath = audioPath.replace('.webm', '.wav')
     await this.convertToWav(audioPath, wavPath)
 
-    // Read WAV as raw Float32Array (Node.js has no AudioContext)
-    onProgress({ status: 'Reading audio...', progress: 0 })
+    // Step 2: Verify the WAV file exists and has content
+    if (!existsSync(wavPath)) {
+      throw new Error('Audio conversion failed: WAV file not created')
+    }
+    const wavStat = statSync(wavPath)
+    if (wavStat.size < 100) {
+      throw new Error(`Audio conversion produced empty file (${wavStat.size} bytes)`)
+    }
+
+    onProgress({ status: 'Conversion complete, reading audio...', progress: 30 })
+
+    // Step 3: Parse WAV into Float32Array
     const audioData = this.readWavAsFloat32(wavPath)
+    if (audioData.length === 0) {
+      throw new Error('No audio samples found in WAV file')
+    }
 
-    onProgress({ status: 'Transcribing...', progress: 0 })
+    onProgress({ status: `Transcribing ${Math.round(audioData.length / 16000)}s of audio...`, progress: 40 })
 
+    // Step 4: Run Whisper
     const result = await this.pipe(audioData, {
       return_timestamps: true,
       chunk_length_s: 30,
@@ -55,8 +84,8 @@ export class Transcriber {
     const segments = (result.chunks || []).map((chunk: any) => ({
       start: chunk.timestamp[0] || 0,
       end: chunk.timestamp[1] || 0,
-      text: chunk.text.trim()
-    }))
+      text: (chunk.text || '').trim()
+    })).filter((s: any) => s.text.length > 0)
 
     const fullText = segments.map((s: any) => s.text).join(' ')
 
@@ -67,27 +96,42 @@ export class Transcriber {
 
   /**
    * Parse a 16kHz mono 16-bit PCM WAV file into a Float32Array.
-   * ffmpeg outputs little-endian signed 16-bit samples (pcm_s16le).
    */
   private readWavAsFloat32(wavPath: string): Float32Array {
     const buffer = readFileSync(wavPath)
 
-    // Find the 'data' chunk — skip the RIFF header and search for marker
-    let dataOffset = 12
-    while (dataOffset < buffer.length - 8) {
-      const chunkId = buffer.toString('ascii', dataOffset, dataOffset + 4)
-      const chunkSize = buffer.readUInt32LE(dataOffset + 4)
+    if (buffer.length < 44) {
+      throw new Error(`WAV file too small (${buffer.length} bytes)`)
+    }
+
+    // Verify RIFF header
+    const riff = buffer.toString('ascii', 0, 4)
+    if (riff !== 'RIFF') {
+      throw new Error(`Not a valid WAV file (header: ${riff})`)
+    }
+
+    // Find the 'data' chunk
+    let offset = 12
+    while (offset < buffer.length - 8) {
+      const chunkId = buffer.toString('ascii', offset, offset + 4)
+      const chunkSize = buffer.readUInt32LE(offset + 4)
+
       if (chunkId === 'data') {
-        dataOffset += 8
-        const numSamples = chunkSize / 2 // 16-bit = 2 bytes per sample
+        const dataStart = offset + 8
+        const numSamples = Math.floor(chunkSize / 2)
         const float32 = new Float32Array(numSamples)
+
         for (let i = 0; i < numSamples; i++) {
-          const sample = buffer.readInt16LE(dataOffset + i * 2)
-          float32[i] = sample / 32768 // normalize to [-1, 1]
+          const bytePos = dataStart + i * 2
+          if (bytePos + 1 >= buffer.length) break
+          float32[i] = buffer.readInt16LE(bytePos) / 32768
         }
+
         return float32
       }
-      dataOffset += 8 + chunkSize
+
+      // Move to next chunk (pad to even boundary)
+      offset += 8 + chunkSize + (chunkSize % 2)
     }
 
     throw new Error('Invalid WAV file: no data chunk found')
@@ -103,17 +147,23 @@ export class Transcriber {
         ffmpegPath = 'ffmpeg'
       }
 
+      // Full explicit conversion pipeline:
+      // -vn: strip video, -acodec pcm_s16le: force 16-bit PCM
+      // -ar 16000: 16kHz sample rate, -ac 1: mono
       execFile(ffmpegPath, [
+        '-y',
         '-i', input,
+        '-vn',
+        '-acodec', 'pcm_s16le',
         '-ar', '16000',
         '-ac', '1',
-        '-sample_fmt', 's16',
-        '-f', 'wav',
-        '-y',
         output
-      ], (err) => {
-        if (err) reject(err)
-        else resolve()
+      ], { timeout: 60000 }, (err, _stdout, stderr) => {
+        if (err) {
+          reject(new Error(`ffmpeg failed: ${err.message}\n${stderr}`))
+        } else {
+          resolve()
+        }
       })
     })
   }

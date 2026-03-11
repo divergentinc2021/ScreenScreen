@@ -68,10 +68,22 @@ const api = {
   openFolder: (meetingId: string): Promise<void> =>
     ipcRenderer.invoke('open-folder', meetingId),
 
+  prepareModel: (modelName: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('prepare-model', modelName),
+
+  getModelStatus: (): Promise<{ ready: boolean }> =>
+    ipcRenderer.invoke('model-status'),
+
   onTranscriptionProgress: (callback: (data: { meetingId: string; status: string; progress?: number }) => void): (() => void) => {
     const handler = (_e: any, data: any) => callback(data)
     ipcRenderer.on('transcription-progress', handler)
     return () => { ipcRenderer.removeListener('transcription-progress', handler) }
+  },
+
+  onModelProgress: (callback: (data: { status: string; progress?: number }) => void): (() => void) => {
+    const handler = (_e: any, data: any) => callback(data)
+    ipcRenderer.on('model-progress', handler)
+    return () => { ipcRenderer.removeListener('model-progress', handler) }
   }
 }
 

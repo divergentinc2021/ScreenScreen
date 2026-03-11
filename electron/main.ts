@@ -110,6 +110,22 @@ ipcMain.handle('delete-meeting', async (_e, id: string) => {
   return storage.deleteMeeting(id)
 })
 
+ipcMain.handle('prepare-model', async (_e, modelName: string) => {
+  const onProgress = (progress: { status: string; progress?: number }) => {
+    mainWindow?.webContents.send('model-progress', progress)
+  }
+  try {
+    await transcriber.prepareModel(modelName, onProgress)
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('model-status', async () => {
+  return { ready: transcriber.isModelReady() }
+})
+
 ipcMain.handle('get-settings', async () => {
   return storage.getSettings()
 })
