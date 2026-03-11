@@ -34,7 +34,6 @@ export type Source = {
 
 export type Settings = {
   workerUrl: string
-  whisperModel: string
 }
 
 const api = {
@@ -44,8 +43,8 @@ const api = {
   saveRecording: (buffer: ArrayBuffer, duration: number, title: string): Promise<MeetingMeta> =>
     ipcRenderer.invoke('save-recording', buffer, duration, title),
 
-  transcribe: (meetingId: string): Promise<TranscriptResult> =>
-    ipcRenderer.invoke('transcribe', meetingId),
+  transcribe: (meetingId: string, workerUrl: string): Promise<TranscriptResult> =>
+    ipcRenderer.invoke('transcribe', meetingId, workerUrl),
 
   summarize: (meetingId: string, workerUrl: string): Promise<Summary> =>
     ipcRenderer.invoke('summarize', meetingId, workerUrl),
@@ -68,22 +67,10 @@ const api = {
   openFolder: (meetingId: string): Promise<void> =>
     ipcRenderer.invoke('open-folder', meetingId),
 
-  prepareModel: (modelName: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('prepare-model', modelName),
-
-  getModelStatus: (): Promise<{ ready: boolean }> =>
-    ipcRenderer.invoke('model-status'),
-
   onTranscriptionProgress: (callback: (data: { meetingId: string; status: string; progress?: number }) => void): (() => void) => {
     const handler = (_e: any, data: any) => callback(data)
     ipcRenderer.on('transcription-progress', handler)
     return () => { ipcRenderer.removeListener('transcription-progress', handler) }
-  },
-
-  onModelProgress: (callback: (data: { status: string; progress?: number }) => void): (() => void) => {
-    const handler = (_e: any, data: any) => callback(data)
-    ipcRenderer.on('model-progress', handler)
-    return () => { ipcRenderer.removeListener('model-progress', handler) }
   }
 }
 

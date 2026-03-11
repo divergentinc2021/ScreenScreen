@@ -34,7 +34,6 @@ type Source = {
 
 type Settings = {
   workerUrl: string
-  whisperModel: string
 }
 
 type MeetingDetail = {
@@ -49,7 +48,7 @@ declare global {
     api: {
       getSources: () => Promise<Source[]>
       saveRecording: (buffer: ArrayBuffer, duration: number, title: string) => Promise<MeetingMeta>
-      transcribe: (meetingId: string) => Promise<TranscriptResult>
+      transcribe: (meetingId: string, workerUrl: string) => Promise<TranscriptResult>
       summarize: (meetingId: string, workerUrl: string) => Promise<Summary>
       getMeetings: () => Promise<MeetingMeta[]>
       getMeeting: (id: string) => Promise<MeetingDetail>
@@ -57,10 +56,7 @@ declare global {
       getSettings: () => Promise<Settings>
       saveSettings: (settings: Settings) => Promise<void>
       openFolder: (meetingId: string) => Promise<void>
-      prepareModel: (modelName: string) => Promise<{ success: boolean; error?: string }>
-      getModelStatus: () => Promise<{ ready: boolean }>
       onTranscriptionProgress: (callback: (data: { meetingId: string; status: string; progress?: number }) => void) => () => void
-      onModelProgress: (callback: (data: { status: string; progress?: number }) => void) => () => void
     }
   }
 }

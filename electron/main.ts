@@ -61,7 +61,7 @@ ipcMain.handle('save-recording', async (_e, buffer: ArrayBuffer, duration: numbe
   return meeting
 })
 
-ipcMain.handle('transcribe', async (_e, meetingId: string) => {
+ipcMain.handle('transcribe', async (_e, meetingId: string, workerUrl: string) => {
   const meetingDir = storage.getMeetingDir(meetingId)
   const audioPath = join(meetingDir, 'audio.webm')
 
@@ -70,7 +70,7 @@ ipcMain.handle('transcribe', async (_e, meetingId: string) => {
   }
 
   try {
-    const result = await transcriber.transcribe(audioPath, onProgress)
+    const result = await transcriber.transcribe(audioPath, workerUrl, onProgress)
     await storage.saveTranscript(meetingId, result)
     return result
   } catch (err: any) {
@@ -108,22 +108,6 @@ ipcMain.handle('get-meeting', async (_e, id: string) => {
 
 ipcMain.handle('delete-meeting', async (_e, id: string) => {
   return storage.deleteMeeting(id)
-})
-
-ipcMain.handle('prepare-model', async (_e, modelName: string) => {
-  const onProgress = (progress: { status: string; progress?: number }) => {
-    mainWindow?.webContents.send('model-progress', progress)
-  }
-  try {
-    await transcriber.prepareModel(modelName, onProgress)
-    return { success: true }
-  } catch (err: any) {
-    return { success: false, error: err.message }
-  }
-})
-
-ipcMain.handle('model-status', async () => {
-  return { ready: transcriber.isModelReady() }
 })
 
 ipcMain.handle('get-settings', async () => {

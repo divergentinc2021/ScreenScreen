@@ -1,7 +1,7 @@
 {
   "name": "discreenrecorder",
   "version": "1.0.0",
-  "description": "Meeting recorder with local Whisper transcription and AI summaries",
+  "description": "Meeting recorder with Cloudflare Workers AI transcription and summaries",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:electron\"",
@@ -41,11 +41,9 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.5.1",
-    "electron-vite": "^2.3.0",
-    "ffmpeg-static": "^5.2.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "zustand": "^5.0.6"
+    "ffmpeg-static": "^5.3.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zustand": "^5.0.11"
   }
 }

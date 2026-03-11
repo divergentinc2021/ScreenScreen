@@ -10,22 +10,87 @@ const CORS_HEADERS = {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: CORS_HEADERS })
     }
 
     const url = new URL(request.url)
 
+    if (url.pathname === '/api/transcribe' && request.method === 'POST') {
+      return handleTranscribe(request, env)
+    }
+
     if (url.pathname === '/api/summarize' && request.method === 'POST') {
       return handleSummarize(request, env)
     }
 
-    return new Response(JSON.stringify({ status: 'ok', endpoint: '/api/summarize' }), {
+    return new Response(JSON.stringify({
+      status: 'ok',
+      endpoints: ['/api/transcribe', '/api/summarize']
+    }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
   },
 }
+
+// ── Transcribe: accepts audio binary, returns transcript ──
+
+async function handleTranscribe(request: Request, env: Env): Promise<Response> {
+  try {
+    const audioData = await request.arrayBuffer()
+
+    if (!audioData || audioData.byteLength < 100) {
+      return new Response(JSON.stringify({ error: 'No audio data received' }), {
+        status: 400,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Workers AI Whisper — accepts raw audio bytes
+    const result = await env.AI.run('@cf/openai/whisper', {
+      audio: [...new Uint8Array(audioData)],
+    })
+
+    // Result shape: { text: string, vtt?: string, words?: [...] }
+    const segments = (result.words || []).map((w: any) => ({
+      start: w.start || 0,
+      end: w.end || 0,
+      text: w.word || ''
+    }))
+
+    // Group words into sentence-like segments (~10 words each)
+    const grouped = groupWordsIntoSegments(segments, 10)
+
+    return new Response(JSON.stringify({
+      segments: grouped,
+      fullText: result.text || '',
+    }), {
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    })
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    })
+  }
+}
+
+function groupWordsIntoSegments(words: { start: number; end: number; text: string }[], groupSize: number) {
+  if (words.length === 0) return []
+
+  const segments = []
+  for (let i = 0; i < words.length; i += groupSize) {
+    const chunk = words.slice(i, i + groupSize)
+    segments.push({
+      start: chunk[0].start,
+      end: chunk[chunk.length - 1].end,
+      text: chunk.map(w => w.text).join(' ').trim()
+    })
+  }
+  return segments
+}
+
+// ── Summarize: accepts transcript text, returns structured summary ──
 
 async function handleSummarize(request: Request, env: Env): Promise<Response> {
   try {
@@ -38,7 +103,6 @@ async function handleSummarize(request: Request, env: Env): Promise<Response> {
       })
     }
 
-    // Truncate if extremely long (model context limit)
     const trimmed = transcript.slice(0, 15000)
 
     const prompt = `You are a meeting assistant. Analyze this meeting transcript and provide a structured summary.
@@ -65,7 +129,6 @@ If there are no action items or decisions, use empty arrays. Keep each point con
 
     let summary
     try {
-      // Extract JSON from response (handle markdown code blocks)
       const text = result.response || ''
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       summary = jsonMatch ? JSON.parse(jsonMatch[0]) : { overview: text, keyPoints: [], actionItems: [], decisions: [] }

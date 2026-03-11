@@ -36,35 +36,29 @@ type MeetingDetail = {
 type View = 'record' | 'meeting' | 'settings'
 
 type MeetingStore = {
-  // Navigation
   view: View
   setView: (v: View) => void
 
-  // Meetings list
   meetings: MeetingMeta[]
   loadMeetings: () => Promise<void>
 
-  // Current meeting
   currentMeeting: MeetingDetail | null
   selectMeeting: (id: string) => Promise<void>
 
-  // Recording
   isRecording: boolean
   recordingTime: number
   setRecording: (v: boolean) => void
   setRecordingTime: (t: number) => void
 
-  // Transcription
   transcriptionProgress: { status: string; progress?: number } | null
   setTranscriptionProgress: (p: { status: string; progress?: number } | null) => void
 
-  // Settings
-  settings: { workerUrl: string; whisperModel: string }
+  settings: { workerUrl: string }
   loadSettings: () => Promise<void>
-  saveSettings: (s: { workerUrl: string; whisperModel: string }) => Promise<void>
+  saveSettings: (s: { workerUrl: string }) => Promise<void>
 }
 
-export const useMeetingStore = create<MeetingStore>((set, get) => ({
+export const useMeetingStore = create<MeetingStore>((set) => ({
   view: 'record',
   setView: (v) => set({ view: v }),
 
@@ -88,7 +82,7 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
   transcriptionProgress: null,
   setTranscriptionProgress: (p) => set({ transcriptionProgress: p }),
 
-  settings: { workerUrl: '', whisperModel: 'Xenova/whisper-small' },
+  settings: { workerUrl: '' },
   loadSettings: async () => {
     const settings = await window.api.getSettings()
     set({ settings })
