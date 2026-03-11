@@ -1,11 +1,7 @@
-import { pipeline, env, read_audio } from '@huggingface/transformers'
 import { execFile } from 'child_process'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
-
-// Use app data for model cache
-env.cacheDir = join(app.getPath('userData'), 'models')
 
 type ProgressCallback = (progress: { status: string; progress?: number }) => void
 
@@ -16,6 +12,12 @@ export class Transcriber {
     if (this.pipe) return
 
     onProgress({ status: 'Loading Whisper model...', progress: 0 })
+
+    // Use Function trick to prevent TypeScript from converting import() to require()
+    // @huggingface/transformers is ESM-only and cannot be require()'d
+    const importModule = new Function('specifier', 'return import(specifier)')
+    const { pipeline, env } = await importModule('@huggingface/transformers')
+    env.cacheDir = join(app.getPath('userData'), 'models')
 
     this.pipe = await pipeline('automatic-speech-recognition', 'Xenova/whisper-small', {
       progress_callback: (data: any) => {
@@ -70,9 +72,8 @@ export class Transcriber {
   private readWavAsFloat32(wavPath: string): Float32Array {
     const buffer = readFileSync(wavPath)
 
-    // Find the 'data' chunk — skip the 44-byte header (standard WAV)
-    // but search for the actual 'data' marker to be safe
-    let dataOffset = 12 // skip RIFF header
+    // Find the 'data' chunk — skip the RIFF header and search for marker
+    let dataOffset = 12
     while (dataOffset < buffer.length - 8) {
       const chunkId = buffer.toString('ascii', dataOffset, dataOffset + 4)
       const chunkSize = buffer.readUInt32LE(dataOffset + 4)

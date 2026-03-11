@@ -1,5 +1,5 @@
 {
-  "name": "screenscreen",
+  "name": "discreenrecorder",
   "version": "1.0.0",
   "description": "Meeting recorder with local Whisper transcription and AI summaries",
   "main": "dist/electron/main.js",

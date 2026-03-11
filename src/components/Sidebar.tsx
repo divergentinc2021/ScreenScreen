@@ -9,9 +9,9 @@ export default function Sidebar() {
       <div className="px-4 pb-4 border-b border-border">
         <h1 className="font-heading font-bold text-lg flex items-center gap-2">
           <span className="text-red text-xl">●</span>
-          ScreenScreen
+          DiScreenRecorder
         </h1>
-        <p className="text-muted text-xs mt-1">Meeting Recorder</p>
+        <p className="text-muted text-xs mt-1">Record · Transcribe · Summarize</p>
       </div>
 
       {/* Nav */}
