@@ -2,21 +2,33 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs'
 
+const DEFAULT_SETTINGS = {
+  workerUrl: '',
+  transcriptionMode: 'cloud' as const,
+  whisperModel: 'base' as const
+}
+
 export class Storage {
   private baseDir: string = ''
 
   init() {
     this.baseDir = join(app.getPath('home'), 'MeetingRecorder')
     mkdirSync(join(this.baseDir, 'recordings'), { recursive: true })
+    mkdirSync(join(this.baseDir, 'models'), { recursive: true })
 
     // Init settings file if missing
     const settingsPath = join(this.baseDir, 'settings.json')
     if (!existsSync(settingsPath)) {
-      writeFileSync(settingsPath, JSON.stringify({
-        workerUrl: '',
-        whisperModel: 'Xenova/whisper-small'
-      }, null, 2))
+      writeFileSync(settingsPath, JSON.stringify(DEFAULT_SETTINGS, null, 2))
     }
+  }
+
+  getBaseDir(): string {
+    return this.baseDir
+  }
+
+  getModelsDir(): string {
+    return join(this.baseDir, 'models')
   }
 
   getMeetingDir(id: string): string {
@@ -46,7 +58,6 @@ export class Storage {
     writeFileSync(join(dir, 'transcript.json'), JSON.stringify(result, null, 2))
     writeFileSync(join(dir, 'transcript.txt'), result.fullText)
 
-    // Update status
     const metaPath = join(dir, 'meta.json')
     const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
     meta.status = 'transcribed'
@@ -63,8 +74,24 @@ export class Storage {
     writeFileSync(metaPath, JSON.stringify(meta, null, 2))
   }
 
+  async saveMinutes(meetingId: string, minutes: any) {
+    const dir = this.getMeetingDir(meetingId)
+    writeFileSync(join(dir, 'minutes.json'), JSON.stringify(minutes, null, 2))
+
+    const metaPath = join(dir, 'meta.json')
+    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    meta.status = 'minutes'
+    writeFileSync(metaPath, JSON.stringify(meta, null, 2))
+  }
+
   async getTranscript(meetingId: string) {
     const path = join(this.getMeetingDir(meetingId), 'transcript.json')
+    if (!existsSync(path)) return null
+    return JSON.parse(readFileSync(path, 'utf-8'))
+  }
+
+  async getMinutes(meetingId: string) {
+    const path = join(this.getMeetingDir(meetingId), 'minutes.json')
     if (!existsSync(path)) return null
     return JSON.parse(readFileSync(path, 'utf-8'))
   }
@@ -95,11 +122,13 @@ export class Storage {
     const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
     const transcriptPath = join(dir, 'transcript.json')
     const summaryPath = join(dir, 'summary.json')
+    const minutesPath = join(dir, 'minutes.json')
 
     return {
       meta,
       transcript: existsSync(transcriptPath) ? JSON.parse(readFileSync(transcriptPath, 'utf-8')) : undefined,
       summary: existsSync(summaryPath) ? JSON.parse(readFileSync(summaryPath, 'utf-8')) : undefined,
+      minutes: existsSync(minutesPath) ? JSON.parse(readFileSync(minutesPath, 'utf-8')) : undefined,
       audioPath: join(dir, 'audio.webm')
     }
   }
@@ -113,8 +142,10 @@ export class Storage {
 
   getSettings() {
     const path = join(this.baseDir, 'settings.json')
-    if (!existsSync(path)) return { workerUrl: '', whisperModel: 'Xenova/whisper-small' }
-    return JSON.parse(readFileSync(path, 'utf-8'))
+    if (!existsSync(path)) return { ...DEFAULT_SETTINGS }
+    const saved = JSON.parse(readFileSync(path, 'utf-8'))
+    // Merge with defaults for backward compatibility
+    return { ...DEFAULT_SETTINGS, ...saved }
   }
 
   saveSettings(settings: any) {

@@ -19,7 +19,8 @@ files:
   - "!node_modules/electron/**"
   - "!node_modules/electron-builder/**"
   - "!node_modules/concurrently/**"
-  - "!node_modules/@huggingface/transformers/dist/onnxruntime-web/**"
+
+afterPack: ./scripts/fix-permissions.js
 
 mac:
   category: public.app-category.productivity
@@ -29,6 +30,9 @@ mac:
         - arm64
         - x64
   darkModeSupport: true
+  extraResources:
+    - from: binaries/whisper/mac-${arch}/whisper-cli
+      to: whisper/whisper-cli
 
 win:
   target:
@@ -36,6 +40,9 @@ win:
       arch:
         - x64
   artifactName: ${productName}-Setup-${version}.${ext}
+  extraResources:
+    - from: binaries/whisper/win-x64/whisper-cli.exe
+      to: whisper/whisper-cli.exe
 
 nsis:
   oneClick: false

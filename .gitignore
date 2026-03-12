@@ -5,3 +5,7 @@ release/
 .DS_Store
 worker/node_modules/
 worker/.wrangler/
+
+# Whisper binaries and models
+binaries/
+*.bin

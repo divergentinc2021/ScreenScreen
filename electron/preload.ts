@@ -1,70 +1,67 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-export type MeetingMeta = {
-  id: string
-  title: string
-  date: string
-  duration: number
-  status: 'recording' | 'recorded' | 'transcribing' | 'transcribed' | 'summarized'
-}
-
-export type TranscriptSegment = {
-  start: number
-  end: number
-  text: string
-}
-
-export type TranscriptResult = {
-  segments: TranscriptSegment[]
-  fullText: string
-}
-
-export type Summary = {
-  overview: string
-  keyPoints: string[]
-  actionItems: string[]
-  decisions: string[]
-}
-
-export type Source = {
-  id: string
-  name: string
-  thumbnail: string
-}
-
-export type Settings = {
-  workerUrl: string
-}
-
 const api = {
-  getSources: (): Promise<Source[]> =>
+  // ── Recording ──
+  getSources: () =>
     ipcRenderer.invoke('get-sources'),
 
-  saveRecording: (buffer: ArrayBuffer, duration: number, title: string): Promise<MeetingMeta> =>
+  saveRecording: (buffer: ArrayBuffer, duration: number, title: string) =>
     ipcRenderer.invoke('save-recording', buffer, duration, title),
 
-  transcribe: (meetingId: string, workerUrl: string): Promise<TranscriptResult> =>
+  // ── Cloud Transcription ──
+  transcribe: (meetingId: string, workerUrl: string) =>
     ipcRenderer.invoke('transcribe', meetingId, workerUrl),
 
-  summarize: (meetingId: string, workerUrl: string): Promise<Summary> =>
+  // ── Local Transcription ──
+  transcribeLocal: (meetingId: string, model: string) =>
+    ipcRenderer.invoke('transcribe-local', meetingId, model),
+
+  // ── Model Management ──
+  getModelStatus: () =>
+    ipcRenderer.invoke('get-model-status'),
+
+  downloadModel: (model: string) =>
+    ipcRenderer.invoke('download-model', model),
+
+  deleteModel: (model: string) =>
+    ipcRenderer.invoke('delete-model', model),
+
+  onModelDownloadProgress: (callback: (data: { modelId: string; progress: number }) => void): (() => void) => {
+    const handler = (_e: any, data: any) => callback(data)
+    ipcRenderer.on('model-download-progress', handler)
+    return () => { ipcRenderer.removeListener('model-download-progress', handler) }
+  },
+
+  // ── Summarization ──
+  summarize: (meetingId: string, workerUrl: string) =>
     ipcRenderer.invoke('summarize', meetingId, workerUrl),
 
-  getMeetings: (): Promise<MeetingMeta[]> =>
+  // ── Meeting Minutes ──
+  generateMinutes: (meetingId: string, workerUrl: string) =>
+    ipcRenderer.invoke('generate-minutes', meetingId, workerUrl),
+
+  exportMinutes: (meetingId: string, format: string) =>
+    ipcRenderer.invoke('export-minutes', meetingId, format),
+
+  // ── Data Access ──
+  getMeetings: () =>
     ipcRenderer.invoke('get-meetings'),
 
-  getMeeting: (id: string): Promise<{ meta: MeetingMeta; transcript?: TranscriptResult; summary?: Summary; audioPath: string }> =>
+  getMeeting: (id: string) =>
     ipcRenderer.invoke('get-meeting', id),
 
-  deleteMeeting: (id: string): Promise<void> =>
+  deleteMeeting: (id: string) =>
     ipcRenderer.invoke('delete-meeting', id),
 
-  getSettings: (): Promise<Settings> =>
+  // ── Settings ──
+  getSettings: () =>
     ipcRenderer.invoke('get-settings'),
 
-  saveSettings: (settings: Settings): Promise<void> =>
+  saveSettings: (settings: any) =>
     ipcRenderer.invoke('save-settings', settings),
 
-  openFolder: (meetingId: string): Promise<void> =>
+  // ── Utilities ──
+  openFolder: (meetingId: string) =>
     ipcRenderer.invoke('open-folder', meetingId),
 
   onTranscriptionProgress: (callback: (data: { meetingId: string; status: string; progress?: number }) => void): (() => void) => {

@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import RecordingPanel from './components/RecordingPanel'
 import TranscriptView from './components/TranscriptView'
 import SummaryView from './components/SummaryView'
+import MeetingMinutesView from './components/MeetingMinutesView'
 import SettingsPanel from './components/SettingsPanel'
 
 export default function App() {
@@ -32,6 +33,13 @@ export default function App() {
           <MeetingView />
         )}
 
+        {view === 'minutes' && currentMeeting?.minutes && (
+          <MeetingMinutesView
+            minutes={currentMeeting.minutes}
+            onExport={(format) => window.api.exportMinutes(currentMeeting.meta.id, format)}
+          />
+        )}
+
         {view === 'settings' && <SettingsPanel />}
       </main>
     </div>
@@ -42,9 +50,10 @@ function MeetingView() {
   const { currentMeeting } = useMeetingStore()
   if (!currentMeeting) return null
 
-  const { meta, transcript, summary } = currentMeeting
+  const { meta, transcript, summary, minutes } = currentMeeting
   const hasTranscript = !!transcript
   const hasSummary = !!summary
+  const hasMinutes = !!minutes
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-6 gap-4">
@@ -68,7 +77,12 @@ function MeetingView() {
       <AudioPlayer path={currentMeeting.audioPath} />
 
       {/* Actions */}
-      <MeetingActions meetingId={meta.id} hasTranscript={hasTranscript} hasSummary={hasSummary} />
+      <MeetingActions
+        meetingId={meta.id}
+        hasTranscript={hasTranscript}
+        hasSummary={hasSummary}
+        hasMinutes={hasMinutes}
+      />
 
       {/* Content */}
       <div className="flex-1 flex gap-4 overflow-hidden">
@@ -104,7 +118,8 @@ function StatusBadge({ status }: { status: string }) {
     recorded: 'bg-yellow/20 text-yellow',
     transcribing: 'bg-accent/20 text-accent',
     transcribed: 'bg-green/20 text-green',
-    summarized: 'bg-green/20 text-green'
+    summarized: 'bg-green/20 text-green',
+    minutes: 'bg-accent/20 text-accent'
   }
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-medium ${colors[status] || 'bg-surface2 text-muted'}`}>
@@ -113,21 +128,42 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function MeetingActions({ meetingId, hasTranscript, hasSummary }: { meetingId: string; hasTranscript: boolean; hasSummary: boolean }) {
+function MeetingActions({ meetingId, hasTranscript, hasSummary, hasMinutes }: {
+  meetingId: string; hasTranscript: boolean; hasSummary: boolean; hasMinutes: boolean
+}) {
   const { transcriptionProgress, loadMeetings, selectMeeting, settings, setView } = useMeetingStore()
 
   const handleTranscribe = async () => {
-    if (!settings.workerUrl) {
-      alert('Set your Cloudflare Worker URL in Settings first.')
-      setView('settings')
-      return
-    }
-    try {
-      await window.api.transcribe(meetingId, settings.workerUrl)
-      await loadMeetings()
-      await selectMeeting(meetingId)
-    } catch (err: any) {
-      alert(`Transcription failed: ${err.message}`)
+    if (settings.transcriptionMode === 'local') {
+      // Local transcription via whisper.cpp
+      try {
+        const models = await window.api.getModelStatus()
+        const selected = models.find(m => m.id === settings.whisperModel)
+        if (!selected?.downloaded) {
+          alert(`Model "${settings.whisperModel}" not downloaded. Go to Settings to download it.`)
+          setView('settings')
+          return
+        }
+        await window.api.transcribeLocal(meetingId, settings.whisperModel as any)
+        await loadMeetings()
+        await selectMeeting(meetingId)
+      } catch (err: any) {
+        alert(`Local transcription failed: ${err.message}`)
+      }
+    } else {
+      // Cloud transcription via Cloudflare Worker
+      if (!settings.workerUrl) {
+        alert('Set your Cloudflare Worker URL in Settings first.')
+        setView('settings')
+        return
+      }
+      try {
+        await window.api.transcribe(meetingId, settings.workerUrl)
+        await loadMeetings()
+        await selectMeeting(meetingId)
+      } catch (err: any) {
+        alert(`Transcription failed: ${err.message}`)
+      }
     }
   }
 
@@ -146,8 +182,24 @@ function MeetingActions({ meetingId, hasTranscript, hasSummary }: { meetingId: s
     }
   }
 
+  const handleGenerateMinutes = async () => {
+    if (!settings.workerUrl) {
+      alert('Set your Cloudflare Worker URL in Settings first.')
+      setView('settings')
+      return
+    }
+    try {
+      await window.api.generateMinutes(meetingId, settings.workerUrl)
+      await loadMeetings()
+      await selectMeeting(meetingId)
+    } catch (err: any) {
+      alert(`Minutes generation failed: ${err.message}`)
+    }
+  }
+
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 flex-wrap">
+      {/* Transcribe button */}
       {!hasTranscript && (
         <button
           onClick={handleTranscribe}
@@ -156,9 +208,11 @@ function MeetingActions({ meetingId, hasTranscript, hasSummary }: { meetingId: s
         >
           {transcriptionProgress
             ? `${transcriptionProgress.status} ${transcriptionProgress.progress ? `(${transcriptionProgress.progress}%)` : ''}`
-            : 'Transcribe'}
+            : settings.transcriptionMode === 'local' ? 'Transcribe (Local)' : 'Transcribe (Cloud)'}
         </button>
       )}
+
+      {/* Summarize button */}
       {hasTranscript && !hasSummary && (
         <button
           onClick={handleSummarize}
@@ -167,6 +221,28 @@ function MeetingActions({ meetingId, hasTranscript, hasSummary }: { meetingId: s
           Generate Summary
         </button>
       )}
+
+      {/* Generate Minutes button */}
+      {hasTranscript && (
+        <button
+          onClick={handleGenerateMinutes}
+          className="px-4 py-2 bg-accent hover:bg-accent-hover rounded-lg text-sm font-medium transition"
+        >
+          {hasMinutes ? 'Regenerate Minutes' : 'Generate Minutes'}
+        </button>
+      )}
+
+      {/* View Minutes button */}
+      {hasMinutes && (
+        <button
+          onClick={() => setView('minutes')}
+          className="px-4 py-2 bg-green/15 hover:bg-green/25 text-green rounded-lg text-sm font-medium transition"
+        >
+          View Minutes
+        </button>
+      )}
+
+      {/* Open Folder */}
       <button
         onClick={() => window.api.openFolder(meetingId)}
         className="px-4 py-2 bg-surface2 hover:bg-border rounded-lg text-sm text-muted transition"

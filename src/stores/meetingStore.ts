@@ -30,10 +30,17 @@ type MeetingDetail = {
   meta: MeetingMeta
   transcript?: TranscriptResult
   summary?: Summary
+  minutes?: any
   audioPath: string
 }
 
-type View = 'record' | 'meeting' | 'settings'
+type Settings = {
+  workerUrl: string
+  transcriptionMode: 'local' | 'cloud'
+  whisperModel: string
+}
+
+type View = 'record' | 'meeting' | 'minutes' | 'settings'
 
 type MeetingStore = {
   view: View
@@ -53,9 +60,9 @@ type MeetingStore = {
   transcriptionProgress: { status: string; progress?: number } | null
   setTranscriptionProgress: (p: { status: string; progress?: number } | null) => void
 
-  settings: { workerUrl: string }
+  settings: Settings
   loadSettings: () => Promise<void>
-  saveSettings: (s: { workerUrl: string }) => Promise<void>
+  saveSettings: (s: Settings) => Promise<void>
 }
 
 export const useMeetingStore = create<MeetingStore>((set) => ({
@@ -82,10 +89,10 @@ export const useMeetingStore = create<MeetingStore>((set) => ({
   transcriptionProgress: null,
   setTranscriptionProgress: (p) => set({ transcriptionProgress: p }),
 
-  settings: { workerUrl: '' },
+  settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base' },
   loadSettings: async () => {
     const settings = await window.api.getSettings()
-    set({ settings })
+    set({ settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', ...settings } })
   },
   saveSettings: async (s) => {
     await window.api.saveSettings(s)

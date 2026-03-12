@@ -1,7 +1,7 @@
 {
   "name": "discreenrecorder",
-  "version": "1.0.0",
-  "description": "Meeting recorder with Cloudflare Workers AI transcription and summaries",
+  "version": "2.0.0",
+  "description": "Meeting recorder with local + cloud transcription, AI summaries, and professional meeting minutes",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:electron\"",

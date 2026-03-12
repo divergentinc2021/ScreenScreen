@@ -24,9 +24,13 @@ export default {
       return handleSummarize(request, env)
     }
 
+    if (url.pathname === '/api/generate-minutes' && request.method === 'POST') {
+      return handleGenerateMinutes(request, env)
+    }
+
     return new Response(JSON.stringify({
       status: 'ok',
-      endpoints: ['/api/transcribe', '/api/summarize']
+      endpoints: ['/api/transcribe', '/api/summarize', '/api/generate-minutes']
     }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
@@ -142,6 +146,119 @@ If there are no action items or decisions, use empty arrays. Keep each point con
     }
 
     return new Response(JSON.stringify(summary), {
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    })
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    })
+  }
+}
+
+// ── Generate Minutes: accepts transcript + metadata, returns structured meeting minutes ──
+
+async function handleGenerateMinutes(request: Request, env: Env): Promise<Response> {
+  try {
+    const { transcript, meetingTitle, duration, date } = await request.json() as {
+      transcript: string; meetingTitle?: string; duration?: number; date?: string
+    }
+
+    if (!transcript) {
+      return new Response(JSON.stringify({ error: 'Transcript is required' }), {
+        status: 400,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const trimmed = transcript.slice(0, 15000)
+
+    const prompt = `You are a professional meeting minutes assistant. Analyze this meeting transcript and generate structured meeting minutes.
+
+${meetingTitle ? `Meeting Title: ${meetingTitle}` : ''}
+${date ? `Date: ${date}` : ''}
+${duration ? `Duration: ${Math.floor(duration / 60)} minutes` : ''}
+
+Transcript:
+${trimmed}
+
+Generate professional meeting minutes. Use objective, neutral language. Focus on key discussions rather than verbatim transcription.
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "location": "Virtual Meeting",
+  "attendees": ["Name 1", "Name 2"],
+  "chairperson": "",
+  "absentees": [],
+  "agenda": ["Topic 1", "Topic 2", "Topic 3"],
+  "discussions": [
+    {
+      "topic": "Topic title",
+      "discussion": "Concise, objective summary of key points discussed",
+      "outcome": "Result or conclusion reached"
+    }
+  ],
+  "overview": "2-3 sentence executive summary of the entire meeting",
+  "actionItems": [
+    {
+      "action": "What needs to be done",
+      "owner": "Person responsible or TBD",
+      "deadline": "Due date or TBD"
+    }
+  ],
+  "decisions": ["Decision 1", "Decision 2"],
+  "nextMeetingDate": "",
+  "adjournmentTime": ""
+}
+
+Rules:
+- Extract attendees from names mentioned in the transcript. Use empty array if none can be identified.
+- Identify 3-7 main agenda topics from the flow of conversation.
+- Each discussion item should be concise (1-3 sentences), NOT a verbatim quote.
+- Action items must include owner and deadline when mentioned, otherwise use "TBD".
+- Use neutral, professional language throughout.
+- If information cannot be determined, use empty strings or arrays.`
+
+    const result = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2048,
+      temperature: 0.2,
+    })
+
+    let minutes
+    try {
+      const text = result.response || ''
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      minutes = jsonMatch ? JSON.parse(jsonMatch[0]) : {
+        location: 'Virtual Meeting',
+        attendees: [],
+        chairperson: '',
+        absentees: [],
+        agenda: [],
+        discussions: [],
+        overview: text,
+        actionItems: [],
+        decisions: [],
+        nextMeetingDate: '',
+        adjournmentTime: ''
+      }
+    } catch {
+      minutes = {
+        location: 'Virtual Meeting',
+        attendees: [],
+        chairperson: '',
+        absentees: [],
+        agenda: [],
+        discussions: [],
+        overview: result.response || 'Failed to generate minutes',
+        actionItems: [],
+        decisions: [],
+        nextMeetingDate: '',
+        adjournmentTime: ''
+      }
+    }
+
+    return new Response(JSON.stringify(minutes), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
   } catch (err: any) {
