@@ -16,11 +16,8 @@ permissions:
   contents: write
 
 jobs:
-  build-mac:
+  build-mac-arm64:
     runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [arm64, x64]
     steps:
       - uses: actions/checkout@v4
 
@@ -35,36 +32,64 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Download whisper binary (macOS ${{ matrix.arch }})
+      - name: Compile whisper-cli (arm64)
         run: |
-          mkdir -p binaries/whisper/mac-${{ matrix.arch }}
-          # Download pre-compiled whisper-cli for this arch
+          mkdir -p binaries/whisper/mac-arm64
           WHISPER_VERSION="1.7.5"
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            # Build from source on arm64 runner
-            git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
-            cd /tmp/whisper
-            cmake -B build -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
-            cmake --build build --config Release -j$(sysctl -n hw.ncpu)
-            cp build/bin/whisper-cli $GITHUB_WORKSPACE/binaries/whisper/mac-${{ matrix.arch }}/whisper-cli
-          else
-            git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
-            cd /tmp/whisper
-            cmake -B build -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
-            cmake --build build --config Release -j$(sysctl -n hw.ncpu)
-            cp build/bin/whisper-cli $GITHUB_WORKSPACE/binaries/whisper/mac-${{ matrix.arch }}/whisper-cli
-          fi
-          chmod +x $GITHUB_WORKSPACE/binaries/whisper/mac-${{ matrix.arch }}/whisper-cli
+          git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
+          cd /tmp/whisper
+          cmake -B build -DCMAKE_OSX_ARCHITECTURES=arm64
+          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+          cp build/bin/whisper-cli $GITHUB_WORKSPACE/binaries/whisper/mac-arm64/whisper-cli
+          chmod +x $GITHUB_WORKSPACE/binaries/whisper/mac-arm64/whisper-cli
 
-      - name: Build Mac DMG (${{ matrix.arch }})
-        run: npx electron-builder --mac --${{ matrix.arch }}
+      - name: Build Mac DMG (arm64)
+        run: npx electron-builder --mac --arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Mac artifact
+      - name: Upload Mac arm64 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mac-${{ matrix.arch }}
+          name: mac-arm64
+          path: release/*.dmg
+
+  build-mac-x64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      - name: Compile whisper-cli (x86_64)
+        run: |
+          mkdir -p binaries/whisper/mac-x64
+          WHISPER_VERSION="1.7.5"
+          git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
+          cd /tmp/whisper
+          cmake -B build
+          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+          cp build/bin/whisper-cli $GITHUB_WORKSPACE/binaries/whisper/mac-x64/whisper-cli
+          chmod +x $GITHUB_WORKSPACE/binaries/whisper/mac-x64/whisper-cli
+
+      - name: Build Mac DMG (x64)
+        run: npx electron-builder --mac --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Mac x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-x64
           path: release/*.dmg
 
   build-win:
@@ -88,12 +113,12 @@ jobs:
         run: |
           mkdir -p binaries/whisper/win-x64
           WHISPER_VERSION="1.7.5"
-          # Download Windows release from ggml-org
           curl -L "https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_VERSION}/whisper-bin-x64.zip" -o /tmp/whisper.zip
           unzip /tmp/whisper.zip -d /tmp/whisper-bin
-          cp /tmp/whisper-bin/whisper-cli.exe binaries/whisper/win-x64/whisper-cli.exe || \
-          cp /tmp/whisper-bin/bin/whisper-cli.exe binaries/whisper/win-x64/whisper-cli.exe || \
-          echo "Warning: Could not find whisper-cli.exe in release archive"
+          # Find whisper-cli.exe wherever it lands in the archive
+          find /tmp/whisper-bin -name "whisper-cli.exe" -exec cp {} binaries/whisper/win-x64/whisper-cli.exe \; || \
+          echo "Warning: whisper-cli.exe not found in release archive"
+          ls -la binaries/whisper/win-x64/
 
       - name: Build Windows installer
         run: npx electron-builder --win
@@ -107,7 +132,7 @@ jobs:
           path: release/*.exe
 
   release:
-    needs: [build-mac, build-win]
+    needs: [build-mac-arm64, build-mac-x64, build-win]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true')
     steps:
@@ -124,7 +149,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: DiScreenRecorder v${{ github.ref_name }}
+          name: DiScreenRecorder ${{ github.ref_name }}
           body: |
             ## DiScreenRecorder ${{ github.ref_name }}
 
@@ -132,10 +157,11 @@ jobs:
             - Screenshots during recording (camera button captures screen)
             - DOCX (Word) export for meeting minutes with embedded screenshots
             - Google Calendar integration with auto-record reminders
+            - CI/CD pipeline for automated Mac + Windows releases
 
             ### Downloads
-            - **macOS Apple Silicon (M1/M2/M3):** `DiScreenRecorder-*-arm64.dmg`
-            - **macOS Intel:** `DiScreenRecorder-*-x64.dmg`
+            - **macOS Apple Silicon (M1/M2/M3/M4):** `DiScreenRecorder-*-arm64.dmg`
+            - **macOS Intel:** `DiScreenRecorder-*.dmg`
             - **Windows:** `DiScreenRecorder-Setup-*.exe`
 
             ### Requirements
