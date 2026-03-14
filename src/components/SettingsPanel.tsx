@@ -25,6 +25,7 @@ export default function SettingsPanel() {
   const [calendarEnabled, setCalendarEnabled] = useState(settings.calendar?.enabled || false)
   const [autoRecord, setAutoRecord] = useState(settings.calendar?.autoRecord || false)
   const [reminderMinutes, setReminderMinutes] = useState(settings.calendar?.reminderMinutes || 5)
+  const [calendarScriptUrl, setCalendarScriptUrl] = useState(settings.calendar?.googleScriptUrl || '')
   const [connectingCalendar, setConnectingCalendar] = useState(false)
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([])
 
@@ -37,6 +38,7 @@ export default function SettingsPanel() {
     setCalendarEnabled(settings.calendar?.enabled || false)
     setAutoRecord(settings.calendar?.autoRecord || false)
     setReminderMinutes(settings.calendar?.reminderMinutes || 5)
+    setCalendarScriptUrl(settings.calendar?.googleScriptUrl || '')
   }, [settings])
 
   useEffect(() => {
@@ -55,9 +57,13 @@ export default function SettingsPanel() {
   }
 
   const handleConnectCalendar = async () => {
+    if (!calendarScriptUrl) {
+      alert('Enter your Google Apps Script URL first.')
+      return
+    }
     setConnectingCalendar(true)
     try {
-      const result = await window.api.googleCalendarAuth()
+      const result = await window.api.googleCalendarAuth(calendarScriptUrl)
       if (result.success) {
         setCalendarConnected(true)
         const events = await window.api.getUpcomingEvents()
@@ -110,7 +116,8 @@ export default function SettingsPanel() {
       calendar: {
         enabled: calendarEnabled,
         autoRecord,
-        reminderMinutes
+        reminderMinutes,
+        googleScriptUrl: calendarScriptUrl
       }
     } as any)
     setSaved(true)
@@ -317,112 +324,126 @@ export default function SettingsPanel() {
         <div className="bg-surface rounded-xl p-5 border border-border">
           <h2 className="font-heading font-semibold text-base mb-3">Google Calendar</h2>
           <p className="text-xs text-muted mb-4">
-            Sync with Google Calendar to get reminders before meetings and auto-start recording.
+            Sync with Google Calendar to get reminders before meetings.
+            Deploy the Apps Script from <code className="text-accent">apps-script/Code.gs</code> and paste the URL below.
           </p>
 
-          {!calendarConnected ? (
-            <button
-              onClick={handleConnectCalendar}
-              disabled={connectingCalendar}
-              className="px-4 py-2.5 rounded-lg text-sm font-medium transition border bg-accent/15 border-accent text-accent hover:bg-accent/25 disabled:opacity-50 flex items-center gap-2"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-              </svg>
-              {connectingCalendar ? 'Connecting...' : 'Connect Google Calendar'}
-            </button>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 text-sm text-green">
-                  <span className="w-2 h-2 rounded-full bg-green" />
-                  Connected to Google Calendar
-                </span>
-                <button
-                  onClick={handleDisconnectCalendar}
-                  className="text-xs text-muted hover:text-red transition"
-                >
-                  Disconnect
-                </button>
-              </div>
+          <div className="flex flex-col gap-3">
+            <input
+              type="url"
+              placeholder="https://script.google.com/macros/s/.../exec"
+              value={calendarScriptUrl}
+              onChange={(e) => {
+                setCalendarScriptUrl(e.target.value)
+                if (!e.target.value) setCalendarConnected(false)
+              }}
+              className="px-3 py-2.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-accent placeholder:text-muted"
+            />
 
-              <label className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={calendarEnabled}
-                  onChange={e => setCalendarEnabled(e.target.checked)}
-                  className="w-4 h-4 accent-accent"
-                />
-                <div>
-                  <p className="text-sm font-medium">Enable meeting reminders</p>
-                  <p className="text-xs text-muted">Get notified before meetings with Zoom/Teams/Meet links</p>
+            {!calendarConnected ? (
+              <button
+                onClick={handleConnectCalendar}
+                disabled={connectingCalendar || !calendarScriptUrl}
+                className="px-4 py-2.5 rounded-lg text-sm font-medium transition border bg-accent/15 border-accent text-accent hover:bg-accent/25 disabled:opacity-50 flex items-center gap-2 w-fit"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                {connectingCalendar ? 'Testing...' : 'Test Connection'}
+              </button>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-sm text-green">
+                    <span className="w-2 h-2 rounded-full bg-green" />
+                    Connected to Google Calendar
+                  </span>
+                  <button
+                    onClick={handleDisconnectCalendar}
+                    className="text-xs text-muted hover:text-red transition"
+                  >
+                    Disconnect
+                  </button>
                 </div>
-              </label>
 
-              {calendarEnabled && (
-                <>
-                  <label className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoRecord}
-                      onChange={e => setAutoRecord(e.target.checked)}
-                      className="w-4 h-4 accent-accent"
-                    />
-                    <div>
-                      <p className="text-sm font-medium">Auto-start recording</p>
-                      <p className="text-xs text-muted">Automatically begin recording when a meeting starts</p>
-                    </div>
-                  </label>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">Reminder time</p>
-                      <p className="text-xs text-muted">Minutes before meeting to show notification</p>
-                    </div>
-                    <select
-                      value={reminderMinutes}
-                      onChange={e => setReminderMinutes(Number(e.target.value))}
-                      className="px-2 py-1.5 bg-surface border border-border rounded-lg text-sm"
-                    >
-                      <option value={1}>1 min</option>
-                      <option value={2}>2 min</option>
-                      <option value={5}>5 min</option>
-                      <option value={10}>10 min</option>
-                      <option value={15}>15 min</option>
-                    </select>
+                <label className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={calendarEnabled}
+                    onChange={e => setCalendarEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-accent"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">Enable meeting reminders</p>
+                    <p className="text-xs text-muted">Get notified before meetings with Zoom/Teams/Meet links</p>
                   </div>
-                </>
-              )}
+                </label>
 
-              {/* Upcoming events preview */}
-              {upcomingEvents.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-muted font-medium mb-2">Upcoming meetings (24h)</p>
-                  <div className="flex flex-col gap-1.5">
-                    {upcomingEvents.slice(0, 5).map(event => (
-                      <div key={event.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg text-xs">
-                        <span className={`w-2 h-2 rounded-full ${
-                          event.platform === 'zoom' ? 'bg-blue-400' :
-                          event.platform === 'teams' ? 'bg-purple-400' :
-                          event.platform === 'meet' ? 'bg-green' : 'bg-muted'
-                        }`} />
-                        <span className="flex-1 truncate font-medium">{event.title}</span>
-                        <span className="text-muted">
-                          {new Date(event.start).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        {event.platform && (
-                          <span className="text-muted capitalize">{event.platform}</span>
-                        )}
+                {calendarEnabled && (
+                  <>
+                    <label className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={autoRecord}
+                        onChange={e => setAutoRecord(e.target.checked)}
+                        className="w-4 h-4 accent-accent"
+                      />
+                      <div>
+                        <p className="text-sm font-medium">Auto-start recording</p>
+                        <p className="text-xs text-muted">Automatically begin recording when a meeting starts</p>
                       </div>
-                    ))}
+                    </label>
+
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-border">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Reminder time</p>
+                        <p className="text-xs text-muted">Minutes before meeting to show notification</p>
+                      </div>
+                      <select
+                        value={reminderMinutes}
+                        onChange={e => setReminderMinutes(Number(e.target.value))}
+                        className="px-2 py-1.5 bg-surface border border-border rounded-lg text-sm"
+                      >
+                        <option value={1}>1 min</option>
+                        <option value={2}>2 min</option>
+                        <option value={5}>5 min</option>
+                        <option value={10}>10 min</option>
+                        <option value={15}>15 min</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                {/* Upcoming events preview */}
+                {upcomingEvents.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-muted font-medium mb-2">Upcoming meetings (24h)</p>
+                    <div className="flex flex-col gap-1.5">
+                      {upcomingEvents.slice(0, 5).map(event => (
+                        <div key={event.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg text-xs">
+                          <span className={`w-2 h-2 rounded-full ${
+                            event.platform === 'zoom' ? 'bg-blue-400' :
+                            event.platform === 'teams' ? 'bg-purple-400' :
+                            event.platform === 'meet' ? 'bg-green' : 'bg-muted'
+                          }`} />
+                          <span className="flex-1 truncate font-medium">{event.title}</span>
+                          <span className="text-muted">
+                            {new Date(event.start).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {event.platform && (
+                            <span className="text-muted capitalize">{event.platform}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Save button */}

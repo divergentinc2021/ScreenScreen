@@ -44,6 +44,9 @@ app.whenReady().then(() => {
 
   // Start calendar polling if enabled
   const settings = storage.getSettings()
+  if (settings.calendar?.googleScriptUrl) {
+    calendarSync.setScriptUrl(settings.calendar.googleScriptUrl)
+  }
   if (settings.calendar?.enabled && calendarSync.isConnected()) {
     calendarSync.startPolling(settings.calendar.reminderMinutes || 5)
   }
@@ -329,7 +332,8 @@ ipcMain.handle('delete-screenshot', async (_e, meetingId: string, filename: stri
 
 // ── Calendar ──
 
-ipcMain.handle('google-calendar-auth', async () => {
+ipcMain.handle('google-calendar-auth', async (_e, scriptUrl: string) => {
+  calendarSync.setScriptUrl(scriptUrl)
   return calendarSync.authenticate()
 })
 

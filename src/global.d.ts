@@ -114,7 +114,7 @@ type CalendarSettings = {
   enabled: boolean
   autoRecord: boolean
   reminderMinutes: number
-  googleRefreshToken?: string
+  googleScriptUrl?: string
 }
 
 // ── Meeting detail ──
@@ -173,7 +173,7 @@ declare global {
       deleteScreenshot: (meetingId: string, filename: string) => Promise<void>
 
       // Calendar
-      googleCalendarAuth: () => Promise<{ success: boolean; error?: string }>
+      googleCalendarAuth: (scriptUrl: string) => Promise<{ success: boolean; error?: string }>
       googleCalendarDisconnect: () => Promise<void>
       getUpcomingEvents: () => Promise<CalendarEvent[]>
       calendarIsConnected: () => Promise<boolean>

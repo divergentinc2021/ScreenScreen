@@ -78,8 +78,8 @@ const api = {
     ipcRenderer.invoke('delete-screenshot', meetingId, filename),
 
   // ── Calendar ──
-  googleCalendarAuth: () =>
-    ipcRenderer.invoke('google-calendar-auth'),
+  googleCalendarAuth: (scriptUrl: string) =>
+    ipcRenderer.invoke('google-calendar-auth', scriptUrl),
 
   googleCalendarDisconnect: () =>
     ipcRenderer.invoke('google-calendar-disconnect'),

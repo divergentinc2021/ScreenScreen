@@ -45,7 +45,7 @@ type CalendarSettings = {
   enabled: boolean
   autoRecord: boolean
   reminderMinutes: number
-  googleRefreshToken?: string
+  googleScriptUrl?: string
 }
 
 type Settings = {
