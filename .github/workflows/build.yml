@@ -76,7 +76,7 @@ jobs:
           WHISPER_VERSION="1.8.3"
           git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
           cd /tmp/whisper
-          cmake -B build -DCMAKE_OSX_ARCHITECTURES=x86_64
+          cmake -B build -DCMAKE_OSX_ARCHITECTURES=x86_64 -DGGML_NATIVE=OFF -DGGML_METAL=OFF
           cmake --build build --config Release -j$(sysctl -n hw.ncpu)
           cp build/bin/whisper-cli $GITHUB_WORKSPACE/binaries/whisper/mac-x64/whisper-cli
           chmod +x $GITHUB_WORKSPACE/binaries/whisper/mac-x64/whisper-cli
