@@ -54,6 +54,7 @@ type Settings = {
   whisperModel: WhisperModel
   language: string
   translateToEnglish: boolean
+  calendar?: CalendarSettings
 }
 
 // ── Meeting Minutes types ──
@@ -90,6 +91,32 @@ type MeetingMinutes = {
   generatedAt: string
 }
 
+// ── Screenshot types ──
+
+type Screenshot = {
+  filename: string
+  timestamp: number  // seconds into recording
+  caption?: string
+}
+
+// ── Calendar types ──
+
+type CalendarEvent = {
+  id: string
+  title: string
+  start: string
+  end: string
+  meetingUrl?: string
+  platform?: 'zoom' | 'teams' | 'meet' | 'other'
+}
+
+type CalendarSettings = {
+  enabled: boolean
+  autoRecord: boolean
+  reminderMinutes: number
+  googleRefreshToken?: string
+}
+
 // ── Meeting detail ──
 
 type MeetingDetail = {
@@ -97,6 +124,7 @@ type MeetingDetail = {
   transcript?: TranscriptResult
   summary?: Summary
   minutes?: MeetingMinutes
+  screenshots?: Screenshot[]
   audioPath: string
 }
 
@@ -107,7 +135,8 @@ declare global {
     api: {
       // Recording
       getSources: () => Promise<Source[]>
-      saveRecording: (buffer: ArrayBuffer, duration: number, title: string) => Promise<MeetingMeta>
+      createMeetingId: () => Promise<string>
+      saveRecording: (buffer: ArrayBuffer, duration: number, title: string, meetingId?: string) => Promise<MeetingMeta>
 
       // Cloud transcription
       transcribe: (meetingId: string, workerUrl: string, options?: { language?: string; task?: string }) => Promise<TranscriptResult>
@@ -124,7 +153,7 @@ declare global {
 
       // Meeting minutes
       generateMinutes: (meetingId: string, workerUrl: string) => Promise<MeetingMinutes>
-      exportMinutes: (meetingId: string, format: 'markdown' | 'pdf' | 'clipboard') => Promise<string>
+      exportMinutes: (meetingId: string, format: 'markdown' | 'pdf' | 'docx' | 'clipboard') => Promise<string>
 
       // Data access
       getMeetings: () => Promise<MeetingMeta[]>
@@ -137,6 +166,18 @@ declare global {
 
       // Audio import
       importAudio: () => Promise<MeetingMeta | null>
+
+      // Screenshots
+      takeScreenshot: (meetingId: string, timestamp: number) => Promise<Screenshot>
+      getScreenshots: (meetingId: string) => Promise<Screenshot[]>
+      deleteScreenshot: (meetingId: string, filename: string) => Promise<void>
+
+      // Calendar
+      googleCalendarAuth: () => Promise<{ success: boolean; error?: string }>
+      googleCalendarDisconnect: () => Promise<void>
+      getUpcomingEvents: () => Promise<CalendarEvent[]>
+      calendarIsConnected: () => Promise<boolean>
+      onMeetingReminder: (callback: (event: CalendarEvent) => void) => () => void
 
       // Utilities
       openFolder: (meetingId: string) => Promise<void>

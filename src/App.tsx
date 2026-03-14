@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMeetingStore } from './stores/meetingStore'
 import Sidebar from './components/Sidebar'
 import RecordingPanel from './components/RecordingPanel'
@@ -8,7 +8,8 @@ import MeetingMinutesView from './components/MeetingMinutesView'
 import SettingsPanel from './components/SettingsPanel'
 
 export default function App() {
-  const { view, currentMeeting, loadMeetings, loadSettings, setTranscriptionProgress } = useMeetingStore()
+  const { view, currentMeeting, loadMeetings, loadSettings, setTranscriptionProgress, setView } = useMeetingStore()
+  const [meetingReminder, setMeetingReminder] = useState<any>(null)
 
   useEffect(() => {
     loadMeetings()
@@ -16,8 +17,18 @@ export default function App() {
     const unsub = window.api.onTranscriptionProgress((data) => {
       setTranscriptionProgress(data)
     })
-    return unsub
+    const unsubReminder = window.api.onMeetingReminder((event) => {
+      setMeetingReminder(event)
+    })
+    return () => { unsub(); unsubReminder() }
   }, [])
+
+  const dismissReminder = () => setMeetingReminder(null)
+
+  const startRecordingFromReminder = () => {
+    setMeetingReminder(null)
+    setView('record')
+  }
 
   return (
     <div className="flex h-screen bg-bg">
@@ -42,18 +53,66 @@ export default function App() {
 
         {view === 'settings' && <SettingsPanel />}
       </main>
+
+      {/* Meeting Reminder Toast */}
+      {meetingReminder && (
+        <div className="fixed bottom-6 right-6 z-50 bg-surface border border-accent/30 rounded-xl shadow-lg p-5 max-w-sm animate-slide-up">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">
+              {meetingReminder.platform === 'zoom' ? '📹' :
+               meetingReminder.platform === 'teams' ? '👥' :
+               meetingReminder.platform === 'meet' ? '🟢' : '📅'}
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-medium">{meetingReminder.title}</p>
+              <p className="text-xs text-muted mt-1">
+                Starting at {new Date(meetingReminder.start).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
+                {meetingReminder.platform && ` on ${meetingReminder.platform.charAt(0).toUpperCase() + meetingReminder.platform.slice(1)}`}
+              </p>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={startRecordingFromReminder}
+                  className="px-3 py-1.5 bg-accent rounded-lg text-xs font-medium transition hover:bg-accent-hover"
+                >
+                  Start Recording
+                </button>
+                <button
+                  onClick={dismissReminder}
+                  className="px-3 py-1.5 bg-surface2 rounded-lg text-xs text-muted font-medium transition hover:bg-border"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <button onClick={dismissReminder} className="text-muted hover:text-text">&times;</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function MeetingView() {
-  const { currentMeeting } = useMeetingStore()
+  const { currentMeeting, selectMeeting } = useMeetingStore()
+  const [showScreenshots, setShowScreenshots] = useState(false)
   if (!currentMeeting) return null
 
-  const { meta, transcript, summary, minutes } = currentMeeting
+  const { meta, transcript, summary, minutes, screenshots } = currentMeeting
   const hasTranscript = !!transcript
   const hasSummary = !!summary
   const hasMinutes = !!minutes
+  const hasScreenshots = screenshots && screenshots.length > 0
+
+  const handleDeleteScreenshot = async (filename: string) => {
+    await window.api.deleteScreenshot(meta.id, filename)
+    await selectMeeting(meta.id)
+  }
+
+  const formatTimestamp = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = Math.floor(s % 60)
+    return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-6 gap-4">
@@ -68,6 +127,7 @@ function MeetingView() {
             })}
             {' · '}
             {Math.floor(meta.duration / 60)}m {Math.floor(meta.duration % 60)}s
+            {hasScreenshots && ` · ${screenshots!.length} screenshot${screenshots!.length > 1 ? 's' : ''}`}
           </p>
         </div>
         <StatusBadge status={meta.status} />
@@ -83,6 +143,50 @@ function MeetingView() {
         hasSummary={hasSummary}
         hasMinutes={hasMinutes}
       />
+
+      {/* Screenshots bar */}
+      {hasScreenshots && (
+        <div className="bg-surface rounded-lg border border-border">
+          <button
+            onClick={() => setShowScreenshots(!showScreenshots)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-muted hover:text-text transition"
+          >
+            <span className="flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              Screenshots ({screenshots!.length})
+            </span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ transform: showScreenshots ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+          {showScreenshots && (
+            <div className="px-4 pb-4 grid grid-cols-3 gap-3">
+              {screenshots!.map((ss) => (
+                <div key={ss.filename} className="relative group rounded-lg overflow-hidden border border-border">
+                  <img
+                    src={`file://${currentMeeting.audioPath.replace('audio.webm', `screenshots/${ss.filename}`)}`}
+                    alt={`Screenshot at ${formatTimestamp(ss.timestamp)}`}
+                    className="w-full aspect-video object-cover"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1 flex items-center justify-between">
+                    <span className="text-xs text-white">{formatTimestamp(ss.timestamp)}</span>
+                    <button
+                      onClick={() => handleDeleteScreenshot(ss.filename)}
+                      className="text-xs text-red hover:text-red/80 opacity-0 group-hover:opacity-100 transition"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 flex gap-4 overflow-hidden">

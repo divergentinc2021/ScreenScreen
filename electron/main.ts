@@ -1,15 +1,17 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, shell, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, shell, dialog, Notification } from 'electron'
 import { join, basename, extname } from 'path'
 import { copyFileSync } from 'fs'
 import { Transcriber } from './transcriber'
 import { LocalTranscriber } from './localTranscriber'
 import { Storage } from './storage'
-import { exportMarkdown, exportClipboard, exportPDF } from './minutesExporter'
+import { exportMarkdown, exportClipboard, exportPDF, exportDocx } from './minutesExporter'
+import { CalendarSync } from './calendar'
 
 let mainWindow: BrowserWindow | null = null
 const storage = new Storage()
 const transcriber = new Transcriber()
 let localTranscriber: LocalTranscriber
+let calendarSync: CalendarSync
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -37,6 +39,14 @@ app.whenReady().then(() => {
   createWindow()
   storage.init()
   localTranscriber = new LocalTranscriber(storage.getModelsDir())
+  calendarSync = new CalendarSync(storage.getBaseDir())
+  if (mainWindow) calendarSync.setMainWindow(mainWindow)
+
+  // Start calendar polling if enabled
+  const settings = storage.getSettings()
+  if (settings.calendar?.enabled && calendarSync.isConnected()) {
+    calendarSync.startPolling(settings.calendar.reminderMinutes || 5)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -61,8 +71,14 @@ ipcMain.handle('get-sources', async () => {
   }))
 })
 
-ipcMain.handle('save-recording', async (_e, buffer: ArrayBuffer, duration: number, title: string) => {
-  const meeting = await storage.saveRecording(Buffer.from(buffer), duration, title)
+ipcMain.handle('create-meeting-id', async () => {
+  const id = storage.createMeetingId()
+  storage.preallocateMeetingDir(id)
+  return id
+})
+
+ipcMain.handle('save-recording', async (_e, buffer: ArrayBuffer, duration: number, title: string, meetingId?: string) => {
+  const meeting = await storage.saveRecording(Buffer.from(buffer), duration, title, meetingId)
   return meeting
 })
 
@@ -202,6 +218,8 @@ ipcMain.handle('export-minutes', async (_e, meetingId: string, format: string) =
 
   const meetingDir = storage.getMeetingDir(meetingId)
 
+  const screenshots = await storage.getScreenshots(meetingId)
+
   switch (format) {
     case 'markdown': {
       const filePath = exportMarkdown(meeting.minutes, meetingDir)
@@ -210,6 +228,11 @@ ipcMain.handle('export-minutes', async (_e, meetingId: string, format: string) =
     }
     case 'pdf': {
       const filePath = await exportPDF(meeting.minutes, meetingDir)
+      shell.openPath(filePath)
+      return filePath
+    }
+    case 'docx': {
+      const filePath = await exportDocx(meeting.minutes, meetingDir, screenshots)
       shell.openPath(filePath)
       return filePath
     }
@@ -279,6 +302,55 @@ ipcMain.handle('get-settings', async () => {
 
 ipcMain.handle('save-settings', async (_e, settings: any) => {
   return storage.saveSettings(settings)
+})
+
+// ── Screenshots ──
+
+ipcMain.handle('take-screenshot', async (_e, meetingId: string, timestamp: number) => {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 1920, height: 1080 }
+  })
+
+  if (sources.length === 0) throw new Error('No screen source available')
+
+  const imageBuffer = sources[0].thumbnail.toPNG()
+  const screenshot = await storage.saveScreenshot(meetingId, imageBuffer, timestamp)
+  return screenshot
+})
+
+ipcMain.handle('get-screenshots', async (_e, meetingId: string) => {
+  return storage.getScreenshots(meetingId)
+})
+
+ipcMain.handle('delete-screenshot', async (_e, meetingId: string, filename: string) => {
+  return storage.deleteScreenshot(meetingId, filename)
+})
+
+// ── Calendar ──
+
+ipcMain.handle('google-calendar-auth', async () => {
+  return calendarSync.authenticate()
+})
+
+ipcMain.handle('google-calendar-disconnect', async () => {
+  await calendarSync.disconnect()
+})
+
+ipcMain.handle('get-upcoming-events', async () => {
+  return calendarSync.getUpcomingEvents()
+})
+
+ipcMain.handle('calendar-start-polling', async (_e, reminderMinutes: number) => {
+  calendarSync.startPolling(reminderMinutes)
+})
+
+ipcMain.handle('calendar-stop-polling', async () => {
+  calendarSync.stopPolling()
+})
+
+ipcMain.handle('calendar-is-connected', async () => {
+  return calendarSync.isConnected()
 })
 
 // ── Utilities ──

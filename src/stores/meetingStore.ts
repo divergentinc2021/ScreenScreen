@@ -26,18 +26,35 @@ type Summary = {
   decisions: string[]
 }
 
+type Screenshot = {
+  filename: string
+  timestamp: number
+  caption?: string
+}
+
 type MeetingDetail = {
   meta: MeetingMeta
   transcript?: TranscriptResult
   summary?: Summary
   minutes?: any
+  screenshots?: Screenshot[]
   audioPath: string
+}
+
+type CalendarSettings = {
+  enabled: boolean
+  autoRecord: boolean
+  reminderMinutes: number
+  googleRefreshToken?: string
 }
 
 type Settings = {
   workerUrl: string
   transcriptionMode: 'local' | 'cloud'
   whisperModel: string
+  language: string
+  translateToEnglish: boolean
+  calendar?: CalendarSettings
 }
 
 type View = 'record' | 'meeting' | 'minutes' | 'settings'
@@ -89,13 +106,13 @@ export const useMeetingStore = create<MeetingStore>((set) => ({
   transcriptionProgress: null,
   setTranscriptionProgress: (p) => set({ transcriptionProgress: p }),
 
-  settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false },
+  settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false } as Settings,
   loadSettings: async () => {
     const settings = await window.api.getSettings()
-    set({ settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false, ...settings } })
+    set({ settings: settings as Settings })
   },
   saveSettings: async (s) => {
-    await window.api.saveSettings(s)
+    await window.api.saveSettings(s as any)
     set({ settings: s })
   }
 }))

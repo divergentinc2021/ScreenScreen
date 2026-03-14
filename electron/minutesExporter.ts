@@ -1,6 +1,11 @@
-import { writeFileSync } from 'fs'
+import { writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { clipboard, BrowserWindow } from 'electron'
+import {
+  Document, Packer, Paragraph, TextRun, HeadingLevel,
+  Table, TableRow, TableCell, WidthType, BorderStyle,
+  AlignmentType, ShadingType
+} from 'docx'
 
 /**
  * Generate professional meeting minutes in Markdown format.
@@ -266,6 +271,226 @@ function markdownToStyledHtml(md: string, title: string): string {
   <p>${html}</p>
 </body>
 </html>`
+}
+
+/**
+ * Export minutes as DOCX (Word document).
+ */
+export async function exportDocx(minutes: any, meetingDir: string, screenshots?: any[]): Promise<string> {
+  const children: any[] = []
+
+  // Title
+  children.push(new Paragraph({
+    heading: HeadingLevel.TITLE,
+    alignment: AlignmentType.CENTER,
+    children: [new TextRun({ text: minutes.title, bold: true, size: 36, font: 'Calibri' })]
+  }))
+
+  // Metadata
+  const metaParts: string[] = []
+  if (minutes.date) metaParts.push(`Date: ${formatDate(minutes.date)}`)
+  if (minutes.duration) metaParts.push(`Duration: ${formatDuration(minutes.duration)}`)
+  if (minutes.location) metaParts.push(`Location: ${minutes.location}`)
+  if (minutes.chairperson) metaParts.push(`Chairperson: ${minutes.chairperson}`)
+
+  children.push(new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 300 },
+    children: [new TextRun({ text: metaParts.join('  |  '), size: 20, color: '666666', font: 'Calibri' })]
+  }))
+
+  // Attendees
+  if (minutes.attendees?.length > 0) {
+    children.push(sectionHeading('Attendees'))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: minutes.attendees.join(', '), size: 22, font: 'Calibri' })]
+    }))
+    if (minutes.absentees?.length > 0) {
+      children.push(new Paragraph({
+        spacing: { before: 100 },
+        children: [
+          new TextRun({ text: 'Apologies: ', bold: true, size: 22, font: 'Calibri' }),
+          new TextRun({ text: minutes.absentees.join(', '), size: 22, font: 'Calibri' })
+        ]
+      }))
+    }
+  }
+
+  // Agenda
+  if (minutes.agenda?.length > 0) {
+    children.push(sectionHeading('Agenda'))
+    minutes.agenda.forEach((a: string, i: number) => {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: `${i + 1}. ${a}`, size: 22, font: 'Calibri' })],
+        spacing: { after: 50 }
+      }))
+    })
+  }
+
+  // Executive Summary
+  if (minutes.overview) {
+    children.push(sectionHeading('Executive Summary'))
+    children.push(new Paragraph({
+      children: [new TextRun({ text: minutes.overview, size: 22, font: 'Calibri' })],
+      spacing: { after: 200 }
+    }))
+  }
+
+  // Discussions
+  if (minutes.discussions?.length > 0) {
+    children.push(sectionHeading('Discussion'))
+    minutes.discussions.forEach((d: any, i: number) => {
+      children.push(new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        children: [new TextRun({ text: `${i + 1}. ${d.topic}`, bold: true, size: 24, font: 'Calibri' })]
+      }))
+      children.push(new Paragraph({
+        children: [new TextRun({ text: d.discussion, size: 22, font: 'Calibri' })],
+        spacing: { after: 100 }
+      }))
+      if (d.outcome) {
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: 'Outcome: ', bold: true, size: 22, font: 'Calibri' }),
+            new TextRun({ text: d.outcome, size: 22, font: 'Calibri' })
+          ],
+          spacing: { after: 200 }
+        }))
+      }
+    })
+  }
+
+  // Action Items Table
+  if (minutes.actionItems?.length > 0) {
+    children.push(sectionHeading('Action Items'))
+
+    const headerRow = new TableRow({
+      tableHeader: true,
+      children: ['#', 'Action', 'Owner', 'Deadline', 'Status'].map(text =>
+        new TableCell({
+          width: { size: text === '#' ? 5 : text === 'Action' ? 40 : 18, type: WidthType.PERCENTAGE },
+          shading: { type: ShadingType.SOLID, color: '1a1a2e', fill: '1a1a2e' },
+          children: [new Paragraph({
+            children: [new TextRun({ text, bold: true, size: 20, color: 'ffffff', font: 'Calibri' })]
+          })]
+        })
+      )
+    })
+
+    const dataRows = minutes.actionItems.map((a: any, i: number) =>
+      new TableRow({
+        children: [
+          `${i + 1}`,
+          a.action || '',
+          a.owner || 'TBD',
+          a.deadline || 'TBD',
+          a.status === 'completed' ? 'Completed' : 'Pending'
+        ].map((text, ci) =>
+          new TableCell({
+            width: { size: ci === 0 ? 5 : ci === 1 ? 40 : 18, type: WidthType.PERCENTAGE },
+            children: [new Paragraph({
+              children: [new TextRun({ text, size: 20, font: 'Calibri' })]
+            })]
+          })
+        )
+      })
+    )
+
+    children.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [headerRow, ...dataRows]
+    }))
+  }
+
+  // Decisions
+  if (minutes.decisions?.length > 0) {
+    children.push(sectionHeading('Decisions Made'))
+    minutes.decisions.forEach((d: string) => {
+      children.push(new Paragraph({
+        bullet: { level: 0 },
+        children: [new TextRun({ text: d, size: 22, font: 'Calibri' })]
+      }))
+    })
+  }
+
+  // Screenshots
+  if (screenshots && screenshots.length > 0) {
+    children.push(sectionHeading('Screenshots'))
+    for (const ss of screenshots) {
+      const imgPath = join(meetingDir, 'screenshots', ss.filename)
+      if (existsSync(imgPath)) {
+        const { ImageRun } = require('docx')
+        const imgData = readFileSync(imgPath)
+        children.push(new Paragraph({
+          spacing: { before: 200, after: 100 },
+          children: [
+            new ImageRun({
+              data: imgData,
+              transformation: { width: 500, height: 300 },
+              type: 'png'
+            })
+          ]
+        }))
+        children.push(new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new TextRun({
+            text: `Screenshot at ${formatTimestamp(ss.timestamp)}${ss.caption ? ' — ' + ss.caption : ''}`,
+            size: 18, italics: true, color: '666666', font: 'Calibri'
+          })]
+        }))
+      }
+    }
+  }
+
+  // Closing
+  if (minutes.nextMeetingDate || minutes.adjournmentTime) {
+    children.push(sectionHeading('Closing'))
+    if (minutes.adjournmentTime) {
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: 'Meeting adjourned at: ', bold: true, size: 22, font: 'Calibri' }),
+          new TextRun({ text: minutes.adjournmentTime, size: 22, font: 'Calibri' })
+        ]
+      }))
+    }
+    if (minutes.nextMeetingDate) {
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: 'Next meeting: ', bold: true, size: 22, font: 'Calibri' }),
+          new TextRun({ text: minutes.nextMeetingDate, size: 22, font: 'Calibri' })
+        ]
+      }))
+    }
+  }
+
+  // Footer
+  children.push(new Paragraph({
+    spacing: { before: 400 },
+    children: [new TextRun({
+      text: `Minutes generated by DiScreenRecorder on ${formatDate(minutes.generatedAt)}`,
+      size: 18, italics: true, color: '999999', font: 'Calibri'
+    })]
+  }))
+
+  const doc = new Document({
+    creator: 'DiScreenRecorder',
+    title: minutes.title,
+    sections: [{ children }]
+  })
+
+  const buffer = await Packer.toBuffer(doc)
+  const filePath = join(meetingDir, 'minutes.docx')
+  writeFileSync(filePath, buffer)
+  return filePath
+}
+
+function sectionHeading(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 300, after: 100 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: 'DDDDDD' } },
+    children: [new TextRun({ text, bold: true, size: 26, color: '1a1a2e', font: 'Calibri' })]
+  })
 }
 
 // ── Utilities ──

@@ -35,8 +35,18 @@ export class Storage {
     return join(this.baseDir, 'recordings', id)
   }
 
-  async saveRecording(buffer: Buffer, duration: number, title: string) {
-    const id = new Date().toISOString().replace(/[:.]/g, '-')
+  createMeetingId(): string {
+    return new Date().toISOString().replace(/[:.]/g, '-')
+  }
+
+  preallocateMeetingDir(id: string): string {
+    const dir = this.getMeetingDir(id)
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  async saveRecording(buffer: Buffer, duration: number, title: string, preAllocatedId?: string) {
+    const id = preAllocatedId || new Date().toISOString().replace(/[:.]/g, '-')
     const dir = this.getMeetingDir(id)
     mkdirSync(dir, { recursive: true })
 
@@ -96,6 +106,49 @@ export class Storage {
     return JSON.parse(readFileSync(path, 'utf-8'))
   }
 
+  // ── Screenshots ──
+
+  getScreenshotsDir(meetingId: string): string {
+    const dir = join(this.getMeetingDir(meetingId), 'screenshots')
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  async saveScreenshot(meetingId: string, imageBuffer: Buffer, timestamp: number): Promise<{ filename: string; timestamp: number }> {
+    const dir = this.getScreenshotsDir(meetingId)
+    const filename = `screenshot-${Date.now()}.png`
+    writeFileSync(join(dir, filename), imageBuffer)
+
+    // Update screenshots manifest
+    const manifestPath = join(this.getMeetingDir(meetingId), 'screenshots.json')
+    const screenshots = existsSync(manifestPath)
+      ? JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      : []
+    const entry = { filename, timestamp }
+    screenshots.push(entry)
+    writeFileSync(manifestPath, JSON.stringify(screenshots, null, 2))
+    return entry
+  }
+
+  async getScreenshots(meetingId: string): Promise<any[]> {
+    const manifestPath = join(this.getMeetingDir(meetingId), 'screenshots.json')
+    if (!existsSync(manifestPath)) return []
+    return JSON.parse(readFileSync(manifestPath, 'utf-8'))
+  }
+
+  async deleteScreenshot(meetingId: string, filename: string): Promise<void> {
+    const dir = this.getScreenshotsDir(meetingId)
+    const filePath = join(dir, filename)
+    if (existsSync(filePath)) rmSync(filePath)
+
+    const manifestPath = join(this.getMeetingDir(meetingId), 'screenshots.json')
+    if (existsSync(manifestPath)) {
+      const screenshots = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      const filtered = screenshots.filter((s: any) => s.filename !== filename)
+      writeFileSync(manifestPath, JSON.stringify(filtered, null, 2))
+    }
+  }
+
   async getMeetings() {
     const dir = join(this.baseDir, 'recordings')
     if (!existsSync(dir)) return []
@@ -124,11 +177,14 @@ export class Storage {
     const summaryPath = join(dir, 'summary.json')
     const minutesPath = join(dir, 'minutes.json')
 
+    const screenshotsPath = join(dir, 'screenshots.json')
+
     return {
       meta,
       transcript: existsSync(transcriptPath) ? JSON.parse(readFileSync(transcriptPath, 'utf-8')) : undefined,
       summary: existsSync(summaryPath) ? JSON.parse(readFileSync(summaryPath, 'utf-8')) : undefined,
       minutes: existsSync(minutesPath) ? JSON.parse(readFileSync(minutesPath, 'utf-8')) : undefined,
+      screenshots: existsSync(screenshotsPath) ? JSON.parse(readFileSync(screenshotsPath, 'utf-8')) : undefined,
       audioPath: join(dir, 'audio.webm')
     }
   }

@@ -21,12 +21,12 @@ type MeetingMinutes = {
 
 export default function MeetingMinutesView({ minutes, onExport }: {
   minutes: MeetingMinutes
-  onExport: (format: 'markdown' | 'pdf' | 'clipboard') => void
+  onExport: (format: 'markdown' | 'pdf' | 'docx' | 'clipboard') => void
 }) {
   const [showTranscript, setShowTranscript] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
 
-  const handleExport = async (format: 'markdown' | 'pdf' | 'clipboard') => {
+  const handleExport = async (format: 'markdown' | 'pdf' | 'docx' | 'clipboard') => {
     setExporting(format)
     try {
       await onExport(format)
@@ -51,6 +51,12 @@ export default function MeetingMinutesView({ minutes, onExport }: {
           icon="md"
           loading={exporting === 'markdown'}
           onClick={() => handleExport('markdown')}
+        />
+        <ExportBtn
+          label="Word"
+          icon="docx"
+          loading={exporting === 'docx'}
+          onClick={() => handleExport('docx')}
         />
         <ExportBtn
           label="PDF"
@@ -259,6 +265,7 @@ function ExportBtn({ label, icon, loading, onClick }: {
   const icons: Record<string, string> = {
     clipboard: '📋',
     md: '📄',
+    docx: '📝',
     pdf: '📕'
   }
   return (

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useMeetingStore } from '../stores/meetingStore'
 
 type Source = { id: string; name: string; thumbnail: string }
@@ -10,10 +10,15 @@ export default function RecordingPanel() {
   const [showPicker, setShowPicker] = useState(false)
   const [title, setTitle] = useState('')
 
+  // Screenshot state
+  const [screenshotFlash, setScreenshotFlash] = useState(false)
+  const [screenshotCount, setScreenshotCount] = useState(0)
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
+  const meetingIdRef = useRef<string | null>(null)
 
   const loadSources = async () => {
     const srcs = await window.api.getSources()
@@ -28,6 +33,10 @@ export default function RecordingPanel() {
     }
 
     try {
+      // Pre-allocate meeting ID so screenshots can be saved during recording
+      const meetingId = await window.api.createMeetingId()
+      meetingIdRef.current = meetingId
+
       // Get screen audio
       const screenStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -86,6 +95,7 @@ export default function RecordingPanel() {
       startTimeRef.current = Date.now()
       setRecording(true)
       setRecordingTime(0)
+      setScreenshotCount(0)
 
       timerRef.current = setInterval(() => {
         setRecordingTime(Math.floor((Date.now() - startTimeRef.current) / 1000))
@@ -111,11 +121,14 @@ export default function RecordingPanel() {
         const meeting = await window.api.saveRecording(
           buffer,
           duration,
-          title || `Meeting ${new Date().toLocaleDateString('en-ZA')}`
+          title || `Meeting ${new Date().toLocaleDateString('en-ZA')}`,
+          meetingIdRef.current || undefined
         )
 
         setRecording(false)
         setRecordingTime(0)
+        setScreenshotCount(0)
+        meetingIdRef.current = null
         setTitle('')
         await loadMeetings()
         await selectMeeting(meeting.id)
@@ -126,6 +139,22 @@ export default function RecordingPanel() {
       recorder.stream.getTracks().forEach(t => t.stop())
     })
   }, [title])
+
+  const takeScreenshot = useCallback(async () => {
+    if (!meetingIdRef.current) return
+
+    try {
+      const timestamp = Math.floor((Date.now() - startTimeRef.current) / 1000)
+      await window.api.takeScreenshot(meetingIdRef.current, timestamp)
+      setScreenshotCount(prev => prev + 1)
+
+      // Flash effect
+      setScreenshotFlash(true)
+      setTimeout(() => setScreenshotFlash(false), 200)
+    } catch (err: any) {
+      console.error('Screenshot failed:', err.message)
+    }
+  }, [])
 
   const selectSource = (source: Source) => {
     setSelectedSource(source)
@@ -142,6 +171,11 @@ export default function RecordingPanel() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
+      {/* Screenshot flash overlay */}
+      {screenshotFlash && (
+        <div className="fixed inset-0 bg-white/20 z-50 pointer-events-none animate-flash" />
+      )}
+
       {/* Title input */}
       <input
         type="text"
@@ -169,29 +203,57 @@ export default function RecordingPanel() {
         </button>
       )}
 
-      {/* Record button */}
-      <button
-        onClick={isRecording ? stopRecording : startRecording}
-        className="relative group"
-      >
-        <div className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-          isRecording
-            ? 'bg-red/20 hover:bg-red/30'
-            : 'bg-accent/20 hover:bg-accent/30'
-        }`}>
-          {isRecording ? (
-            <>
-              <div className="pulse-ring absolute inset-0 rounded-full" />
-              <div className="w-8 h-8 bg-red rounded-md" />
-            </>
-          ) : (
-            <div className="w-10 h-10 bg-red rounded-full" />
-          )}
-        </div>
-      </button>
+      {/* Recording controls */}
+      <div className="flex items-center gap-6">
+        {/* Record / Stop button */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          className="relative group"
+        >
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+            isRecording
+              ? 'bg-red/20 hover:bg-red/30'
+              : 'bg-accent/20 hover:bg-accent/30'
+          }`}>
+            {isRecording ? (
+              <>
+                <div className="pulse-ring absolute inset-0 rounded-full" />
+                <div className="w-8 h-8 bg-red rounded-md" />
+              </>
+            ) : (
+              <div className="w-10 h-10 bg-red rounded-full" />
+            )}
+          </div>
+        </button>
+
+        {/* Screenshot button — only shown during recording */}
+        {isRecording && (
+          <button
+            onClick={takeScreenshot}
+            className="relative group"
+            title="Take Screenshot"
+          >
+            <div className="w-14 h-14 rounded-full bg-surface2 hover:bg-border flex items-center justify-center transition-all border border-border">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </div>
+            {screenshotCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-accent rounded-full text-xs font-bold flex items-center justify-center">
+                {screenshotCount}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
       <p className="text-muted text-sm">
-        {isRecording ? 'Click to stop recording' : selectedSource ? 'Click to start recording' : 'Select a screen or window to record'}
+        {isRecording
+          ? `Click to stop recording${screenshotCount > 0 ? ` · ${screenshotCount} screenshot${screenshotCount > 1 ? 's' : ''}` : ''}`
+          : selectedSource
+            ? 'Click to start recording'
+            : 'Select a screen or window to record'}
       </p>
 
       {/* Source picker modal */}

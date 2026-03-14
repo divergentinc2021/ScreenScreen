@@ -5,8 +5,11 @@ const api = {
   getSources: () =>
     ipcRenderer.invoke('get-sources'),
 
-  saveRecording: (buffer: ArrayBuffer, duration: number, title: string) =>
-    ipcRenderer.invoke('save-recording', buffer, duration, title),
+  createMeetingId: () =>
+    ipcRenderer.invoke('create-meeting-id'),
+
+  saveRecording: (buffer: ArrayBuffer, duration: number, title: string, meetingId?: string) =>
+    ipcRenderer.invoke('save-recording', buffer, duration, title, meetingId),
 
   // ── Cloud Transcription ──
   transcribe: (meetingId: string, workerUrl: string, options?: { language?: string; task?: string }) =>
@@ -63,6 +66,35 @@ const api = {
   // ── Audio Import ──
   importAudio: () =>
     ipcRenderer.invoke('import-audio'),
+
+  // ── Screenshots ──
+  takeScreenshot: (meetingId: string, timestamp: number) =>
+    ipcRenderer.invoke('take-screenshot', meetingId, timestamp),
+
+  getScreenshots: (meetingId: string) =>
+    ipcRenderer.invoke('get-screenshots', meetingId),
+
+  deleteScreenshot: (meetingId: string, filename: string) =>
+    ipcRenderer.invoke('delete-screenshot', meetingId, filename),
+
+  // ── Calendar ──
+  googleCalendarAuth: () =>
+    ipcRenderer.invoke('google-calendar-auth'),
+
+  googleCalendarDisconnect: () =>
+    ipcRenderer.invoke('google-calendar-disconnect'),
+
+  getUpcomingEvents: () =>
+    ipcRenderer.invoke('get-upcoming-events'),
+
+  calendarIsConnected: () =>
+    ipcRenderer.invoke('calendar-is-connected'),
+
+  onMeetingReminder: (callback: (event: any) => void): (() => void) => {
+    const handler = (_e: any, data: any) => callback(data)
+    ipcRenderer.on('meeting-reminder', handler)
+    return () => { ipcRenderer.removeListener('meeting-reminder', handler) }
+  },
 
   // ── Utilities ──
   openFolder: (meetingId: string) =>
