@@ -1,17 +1,22 @@
 import { BrowserWindow } from 'electron'
 
 /**
- * Google Calendar integration via Apps Script.
+ * Google Calendar integration via Apps Script — multi-account support.
  *
- * Instead of OAuth in Electron, we deploy a Google Apps Script web app
- * that reads the user's own calendar. The Electron app just calls the
- * script URL — no client IDs, secrets, or token management needed.
+ * Each Google account holder deploys their own copy of Code.gs as a web app
+ * (Execute as: Me, Access: Anyone). The Electron app stores multiple script
+ * URLs and fetches events from all of them, merging into a single feed.
  *
- * Setup:
- * 1. Open apps-script/Code.gs in Google Apps Script
+ * Setup per account:
+ * 1. Open apps-script/Code.gs in Google Apps Script (logged into your Google account)
  * 2. Deploy as Web App (Execute as: Me, Access: Anyone)
- * 3. Paste the URL in Settings → Google Calendar → Script URL
+ * 3. Add the URL in Settings → Google Calendar → Add Calendar
  */
+
+export type CalendarSource = {
+  name: string
+  url: string
+}
 
 type CalendarEvent = {
   id: string
@@ -21,46 +26,43 @@ type CalendarEvent = {
   location: string
   meetingUrl: string | null
   platform: 'zoom' | 'teams' | 'meet' | 'other' | null
+  calendarName?: string
 }
 
 export class CalendarSync {
-  private scriptUrl: string = ''
+  private sources: CalendarSource[] = []
   private pollTimer: NodeJS.Timeout | null = null
   private mainWindow: BrowserWindow | null = null
   private reminderMinutes = 5
   private notifiedEvents: Set<string> = new Set()
 
-  constructor(_baseDir: string) {
-    // baseDir kept for API compatibility but no longer needed
-    // (no local token storage required)
-  }
+  constructor(_baseDir: string) {}
 
   setMainWindow(win: BrowserWindow) {
     this.mainWindow = win
   }
 
-  setScriptUrl(url: string) {
-    this.scriptUrl = url
+  setSources(sources: CalendarSource[]) {
+    this.sources = sources
   }
 
   isConnected(): boolean {
-    return !!this.scriptUrl && this.scriptUrl.length > 0
+    return this.sources.length > 0
   }
 
   /**
-   * Test the Apps Script connection. No OAuth needed —
-   * just verify the script URL responds.
+   * Test a single Apps Script URL.
    */
-  async authenticate(): Promise<{ success: boolean; error?: string }> {
-    if (!this.scriptUrl) {
-      return { success: false, error: 'No Apps Script URL configured. Add it in Settings.' }
+  async testConnection(url: string): Promise<{ success: boolean; email?: string; error?: string }> {
+    if (!url) {
+      return { success: false, error: 'No URL provided.' }
     }
 
     try {
-      const res = await fetch(`${this.scriptUrl}?action=status`)
+      const res = await fetch(`${url}?action=status`)
       const data = await res.json() as any
       if (data.status === 'ok') {
-        return { success: true }
+        return { success: true, email: data.email }
       }
       return { success: false, error: data.error || 'Unexpected response from script' }
     } catch (err: any) {
@@ -68,25 +70,41 @@ export class CalendarSync {
     }
   }
 
-  async disconnect(): Promise<void> {
-    this.scriptUrl = ''
-    this.stopPolling()
-  }
-
   /**
-   * Fetch upcoming events (next 24 hours) from Apps Script.
+   * Fetch upcoming events from ALL connected calendars.
+   * Events are tagged with their source calendar name.
    */
   async getUpcomingEvents(): Promise<CalendarEvent[]> {
-    if (!this.scriptUrl) return []
+    if (this.sources.length === 0) return []
 
-    try {
-      const res = await fetch(`${this.scriptUrl}?action=upcoming&hours=24`)
-      const data = await res.json() as any
-      return data.events || []
-    } catch (err: any) {
-      console.error('Calendar fetch error:', err.message)
-      return []
+    const allEvents: CalendarEvent[] = []
+
+    // Fetch from all sources in parallel
+    const results = await Promise.allSettled(
+      this.sources.map(async (source) => {
+        try {
+          const res = await fetch(`${source.url}?action=upcoming&hours=24`)
+          const data = await res.json() as any
+          const events = (data.events || []) as CalendarEvent[]
+          // Tag each event with the calendar name
+          return events.map(e => ({ ...e, calendarName: source.name }))
+        } catch (err: any) {
+          console.error(`Calendar fetch error (${source.name}):`, err.message)
+          return []
+        }
+      })
+    )
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        allEvents.push(...result.value)
+      }
     }
+
+    // Sort by start time
+    allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+
+    return allEvents
   }
 
   /**
@@ -96,7 +114,6 @@ export class CalendarSync {
     this.reminderMinutes = reminderMinutes
     this.stopPolling()
 
-    // Check immediately, then every 60 seconds
     this.checkUpcoming()
     this.pollTimer = setInterval(() => this.checkUpcoming(), 60000)
   }
@@ -109,7 +126,7 @@ export class CalendarSync {
   }
 
   private async checkUpcoming() {
-    if (!this.scriptUrl || !this.mainWindow) return
+    if (this.sources.length === 0 || !this.mainWindow) return
 
     try {
       const events = await this.getUpcomingEvents()

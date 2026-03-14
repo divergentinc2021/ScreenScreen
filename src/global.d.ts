@@ -110,11 +110,16 @@ type CalendarEvent = {
   platform?: 'zoom' | 'teams' | 'meet' | 'other'
 }
 
+type CalendarSource = {
+  name: string
+  url: string
+}
+
 type CalendarSettings = {
   enabled: boolean
   autoRecord: boolean
   reminderMinutes: number
-  googleScriptUrl?: string
+  sources: CalendarSource[]
 }
 
 // ── Meeting detail ──
@@ -173,8 +178,7 @@ declare global {
       deleteScreenshot: (meetingId: string, filename: string) => Promise<void>
 
       // Calendar
-      googleCalendarAuth: (scriptUrl: string) => Promise<{ success: boolean; error?: string }>
-      googleCalendarDisconnect: () => Promise<void>
+      testCalendarConnection: (url: string) => Promise<{ success: boolean; email?: string; error?: string }>
       getUpcomingEvents: () => Promise<CalendarEvent[]>
       calendarIsConnected: () => Promise<boolean>
       onMeetingReminder: (callback: (event: CalendarEvent) => void) => () => void
