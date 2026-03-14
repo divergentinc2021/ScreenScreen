@@ -154,10 +154,10 @@ jobs:
             ## DiScreenRecorder ${{ github.ref_name }}
 
             ### What's New
-            - Screenshots during recording (camera button captures screen)
-            - DOCX (Word) export for meeting minutes with embedded screenshots
-            - Google Calendar integration with auto-record reminders
-            - CI/CD pipeline for automated Mac + Windows releases
+            - Multi-calendar support — connect multiple Google accounts via Apps Script
+            - Replaced OAuth with Google Apps Script integration (no client IDs needed)
+            - Removed googleapis dependency (~50MB smaller)
+            - Fixed CI/CD: whisper.cpp v1.8.3, cross-compile fixes, runner updates
 
             ### Downloads
             - **macOS Apple Silicon (M1/M2/M3/M4):** `DiScreenRecorder-*-arm64.dmg`
@@ -167,7 +167,7 @@ jobs:
             ### Requirements
             - macOS 12+ or Windows 10+
             - Cloudflare Worker URL (for cloud transcription & AI summaries)
-            - Optional: Google Calendar API credentials (for calendar sync)
+            - Optional: Google Apps Script deployment (for calendar sync)
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.exe
