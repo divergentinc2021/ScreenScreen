@@ -89,10 +89,10 @@ export const useMeetingStore = create<MeetingStore>((set) => ({
   transcriptionProgress: null,
   setTranscriptionProgress: (p) => set({ transcriptionProgress: p }),
 
-  settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base' },
+  settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false },
   loadSettings: async () => {
     const settings = await window.api.getSettings()
-    set({ settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', ...settings } })
+    set({ settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false, ...settings } })
   },
   saveSettings: async (s) => {
     await window.api.saveSettings(s)

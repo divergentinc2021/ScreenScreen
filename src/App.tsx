@@ -158,7 +158,10 @@ function MeetingActions({ meetingId, hasTranscript, hasSummary, hasMinutes }: {
         return
       }
       try {
-        await window.api.transcribe(meetingId, settings.workerUrl)
+        const options: { language?: string; task?: string } = {}
+        if (settings.language && settings.language !== 'auto') options.language = settings.language
+        if (settings.translateToEnglish) options.task = 'translate'
+        await window.api.transcribe(meetingId, settings.workerUrl, options)
         await loadMeetings()
         await selectMeeting(meetingId)
       } catch (err: any) {

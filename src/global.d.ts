@@ -52,6 +52,8 @@ type Settings = {
   workerUrl: string
   transcriptionMode: TranscriptionMode
   whisperModel: WhisperModel
+  language: string
+  translateToEnglish: boolean
 }
 
 // ── Meeting Minutes types ──
@@ -108,7 +110,7 @@ declare global {
       saveRecording: (buffer: ArrayBuffer, duration: number, title: string) => Promise<MeetingMeta>
 
       // Cloud transcription
-      transcribe: (meetingId: string, workerUrl: string) => Promise<TranscriptResult>
+      transcribe: (meetingId: string, workerUrl: string, options?: { language?: string; task?: string }) => Promise<TranscriptResult>
 
       // Local transcription
       transcribeLocal: (meetingId: string, model: WhisperModel) => Promise<TranscriptResult>
@@ -132,6 +134,9 @@ declare global {
       // Settings
       getSettings: () => Promise<Settings>
       saveSettings: (settings: Settings) => Promise<void>
+
+      // Audio import
+      importAudio: () => Promise<MeetingMeta | null>
 
       // Utilities
       openFolder: (meetingId: string) => Promise<void>

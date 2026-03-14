@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, shell } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow, ipcMain, desktopCapturer, shell, dialog } from 'electron'
+import { join, basename, extname } from 'path'
+import { copyFileSync } from 'fs'
 import { Transcriber } from './transcriber'
 import { LocalTranscriber } from './localTranscriber'
 import { Storage } from './storage'
@@ -67,7 +68,7 @@ ipcMain.handle('save-recording', async (_e, buffer: ArrayBuffer, duration: numbe
 
 // ── Cloud Transcription ──
 
-ipcMain.handle('transcribe', async (_e, meetingId: string, workerUrl: string) => {
+ipcMain.handle('transcribe', async (_e, meetingId: string, workerUrl: string, options?: { language?: string; task?: string }) => {
   const meetingDir = storage.getMeetingDir(meetingId)
   const audioPath = join(meetingDir, 'audio.webm')
 
@@ -76,7 +77,7 @@ ipcMain.handle('transcribe', async (_e, meetingId: string, workerUrl: string) =>
   }
 
   try {
-    const result = await transcriber.transcribe(audioPath, workerUrl, onProgress)
+    const result = await transcriber.transcribe(audioPath, workerUrl, onProgress, options)
     await storage.saveTranscript(meetingId, result)
     return result
   } catch (err: any) {
@@ -219,6 +220,41 @@ ipcMain.handle('export-minutes', async (_e, meetingId: string, format: string) =
     default:
       throw new Error(`Unknown export format: ${format}`)
   }
+})
+
+// ── Audio Import ──
+
+ipcMain.handle('import-audio', async () => {
+  if (!mainWindow) return null
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import Audio File',
+    filters: [
+      { name: 'Audio Files', extensions: ['mp3', 'mp4', 'm4a', 'wav', 'ogg', 'webm', 'aac', 'flac'] }
+    ],
+    properties: ['openFile']
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return null
+
+  const filePath = result.filePaths[0]
+  const fileName = basename(filePath, extname(filePath))
+
+  // Save as a new meeting (storage.saveRecording handles dir creation)
+  const audioBuffer = require('fs').readFileSync(filePath)
+  const meeting = await storage.saveRecording(audioBuffer, 0, fileName)
+
+  // Copy original file alongside the webm (the transcriber will convert it)
+  const meetingDir = storage.getMeetingDir(meeting.id)
+  const ext = extname(filePath)
+  const destPath = join(meetingDir, `audio${ext}`)
+  copyFileSync(filePath, destPath)
+
+  // Also copy as audio.webm so transcriber finds it (it converts any format via ffmpeg)
+  const webmDest = join(meetingDir, 'audio.webm')
+  copyFileSync(filePath, webmDest)
+
+  return meeting
 })
 
 // ── Data Access ──

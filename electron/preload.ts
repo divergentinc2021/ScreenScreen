@@ -9,8 +9,8 @@ const api = {
     ipcRenderer.invoke('save-recording', buffer, duration, title),
 
   // ── Cloud Transcription ──
-  transcribe: (meetingId: string, workerUrl: string) =>
-    ipcRenderer.invoke('transcribe', meetingId, workerUrl),
+  transcribe: (meetingId: string, workerUrl: string, options?: { language?: string; task?: string }) =>
+    ipcRenderer.invoke('transcribe', meetingId, workerUrl, options),
 
   // ── Local Transcription ──
   transcribeLocal: (meetingId: string, model: string) =>
@@ -59,6 +59,10 @@ const api = {
 
   saveSettings: (settings: any) =>
     ipcRenderer.invoke('save-settings', settings),
+
+  // ── Audio Import ──
+  importAudio: () =>
+    ipcRenderer.invoke('import-audio'),
 
   // ── Utilities ──
   openFolder: (meetingId: string) =>

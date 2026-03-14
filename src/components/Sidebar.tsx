@@ -1,7 +1,19 @@
 import { useMeetingStore } from '../stores/meetingStore'
 
 export default function Sidebar() {
-  const { view, setView, meetings, selectMeeting, currentMeeting, isRecording } = useMeetingStore()
+  const { view, setView, meetings, selectMeeting, currentMeeting, isRecording, loadMeetings } = useMeetingStore()
+
+  const handleImport = async () => {
+    try {
+      const meeting = await window.api.importAudio()
+      if (meeting) {
+        await loadMeetings()
+        await selectMeeting(meeting.id)
+      }
+    } catch (err: any) {
+      alert(`Import failed: ${err.message}`)
+    }
+  }
 
   return (
     <aside className="w-64 bg-surface border-r border-border flex flex-col pt-8">
@@ -21,6 +33,12 @@ export default function Sidebar() {
           onClick={() => setView('record')}
           icon={isRecording ? '⏺' : '🎙'}
           label={isRecording ? 'Recording...' : 'New Recording'}
+        />
+        <NavButton
+          active={false}
+          onClick={handleImport}
+          icon="📂"
+          label="Import Audio"
         />
         <NavButton
           active={view === 'settings'}

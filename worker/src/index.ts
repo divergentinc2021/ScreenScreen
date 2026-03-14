@@ -1,5 +1,3 @@
-import { Buffer } from 'node:buffer'
-
 interface Env {
   AI: any
 }
@@ -9,9 +7,6 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
-
-// Chunk size for Whisper: ~900KB keeps us safely under the ~1MB model limit
-const CHUNK_SIZE = 900 * 1024
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -42,7 +37,9 @@ export default {
   },
 }
 
-// ── Transcribe: accepts audio binary, chunks large files, returns full transcript ──
+// ── Transcribe: accepts a single audio chunk (WAV/WebM), returns transcript ──
+// Clients are responsible for splitting long recordings into ~25s WAV chunks
+// and sending each chunk individually to this endpoint.
 
 async function handleTranscribe(request: Request, env: Env): Promise<Response> {
   try {
@@ -55,98 +52,57 @@ async function handleTranscribe(request: Request, env: Env): Promise<Response> {
       })
     }
 
-    const totalSize = audioData.byteLength
-    const totalChunks = Math.ceil(totalSize / CHUNK_SIZE)
-
-    // Small file — single pass (under 900KB)
-    if (totalChunks <= 1) {
-      return transcribeSingle(audioData, env)
+    // Reject chunks larger than 3MB — clients must pre-chunk audio into ~25s WAV segments
+    // (25s @ 16kHz mono 16-bit = ~800KB; 25s @ 48kHz = ~2.4MB)
+    const MAX_CHUNK_SIZE = 3 * 1024 * 1024 // 3MB
+    if (audioData.byteLength > MAX_CHUNK_SIZE) {
+      return new Response(JSON.stringify({
+        error: `Audio chunk too large (${(audioData.byteLength / 1024 / 1024).toFixed(1)}MB). Max is 2MB. Client must split audio into ~25-second WAV chunks before uploading.`,
+        size: audioData.byteLength,
+      }), {
+        status: 413,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      })
     }
 
-    // Large file — chunk and transcribe sequentially
-    const allTexts: string[] = []
-    const allWords: { start: number; end: number; text: string }[] = []
-    let timeOffset = 0
+    // Convert to number array for Workers AI Whisper
+    const audioArray = [...new Uint8Array(audioData)]
 
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE
-      const end = Math.min(start + CHUNK_SIZE, totalSize)
-      const chunkBuffer = audioData.slice(start, end)
+    // Read optional language and task from query params
+    const url = new URL(request.url)
+    const language = url.searchParams.get('language') // e.g. 'en', 'fr'
+    const task = url.searchParams.get('task')         // 'transcribe' or 'translate'
 
-      try {
-        const encoded = Buffer.from(chunkBuffer).toString('base64')
+    const whisperInput: any = { audio: audioArray }
+    if (language) whisperInput.language = language
+    if (task) whisperInput.task = task
 
-        const result = await env.AI.run('@cf/openai/whisper', {
-          audio: encoded,
-        })
+    const result = await env.AI.run('@cf/openai/whisper', whisperInput)
 
-        if (result.text) {
-          allTexts.push(result.text)
-        }
+    // Result shape: { text: string, vtt?: string, words?: [...] }
+    const words = (result.words || []).map((w: any) => ({
+      start: w.start || 0,
+      end: w.end || 0,
+      text: w.word || ''
+    }))
 
-        // Collect words with time offset for sequential chunks
-        if (result.words && result.words.length > 0) {
-          const chunkWords = result.words.map((w: any) => ({
-            start: (w.start || 0) + timeOffset,
-            end: (w.end || 0) + timeOffset,
-            text: w.word || ''
-          }))
-          allWords.push(...chunkWords)
-
-          // Estimate time offset: use the last word's end time from this chunk
-          const lastWord = result.words[result.words.length - 1]
-          timeOffset += (lastWord.end || 30)
-        } else {
-          // No words returned — estimate ~30s per chunk
-          timeOffset += 30
-        }
-      } catch (chunkErr: any) {
-        allTexts.push(`[chunk ${i + 1}/${totalChunks} failed: ${chunkErr.message}]`)
-        timeOffset += 30
-      }
-    }
-
-    const fullText = allTexts.join(' ')
-    const grouped = groupWordsIntoSegments(allWords, 10)
+    const grouped = groupWordsIntoSegments(words, 10)
 
     return new Response(JSON.stringify({
       segments: grouped,
-      fullText,
-      chunks: totalChunks,
+      fullText: result.text || '',
     }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({
+      error: err.message,
+      size: request.headers.get('content-length') || 'unknown',
+    }), {
       status: 500,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
   }
-}
-
-// Single-pass transcription for small files
-async function transcribeSingle(audioData: ArrayBuffer, env: Env): Promise<Response> {
-  const encoded = Buffer.from(audioData).toString('base64')
-
-  const result = await env.AI.run('@cf/openai/whisper', {
-    audio: encoded,
-  })
-
-  const segments = (result.words || []).map((w: any) => ({
-    start: w.start || 0,
-    end: w.end || 0,
-    text: w.word || ''
-  }))
-
-  const grouped = groupWordsIntoSegments(segments, 10)
-
-  return new Response(JSON.stringify({
-    segments: grouped,
-    fullText: result.text || '',
-    chunks: 1,
-  }), {
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  })
 }
 
 function groupWordsIntoSegments(words: { start: number; end: number; text: string }[], groupSize: number) {
@@ -190,10 +146,14 @@ Respond ONLY with valid JSON in this exact format:
   "overview": "2-3 sentence summary of the meeting",
   "keyPoints": ["point 1", "point 2", ...],
   "actionItems": ["action 1", "action 2", ...],
-  "decisions": ["decision 1", "decision 2", ...]
+  "decisions": ["decision 1", "decision 2", ...],
+  "quotes": ["Notable quote 1", "Notable quote 2"]
 }
 
-If there are no action items or decisions, use empty arrays. Keep each point concise.`
+Rules:
+- If there are no action items or decisions, use empty arrays. Keep each point concise.
+- Extract 2-5 notable or important direct quotes from the transcript. Use the exact words from the transcript.
+- If no notable quotes can be identified, use an empty array.`
 
     const result = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
@@ -205,13 +165,14 @@ If there are no action items or decisions, use empty arrays. Keep each point con
     try {
       const text = result.response || ''
       const jsonMatch = text.match(/\{[\s\S]*\}/)
-      summary = jsonMatch ? JSON.parse(jsonMatch[0]) : { overview: text, keyPoints: [], actionItems: [], decisions: [] }
+      summary = jsonMatch ? JSON.parse(jsonMatch[0]) : { overview: text, keyPoints: [], actionItems: [], decisions: [], quotes: [] }
     } catch {
       summary = {
         overview: result.response || 'Failed to parse summary',
         keyPoints: [],
         actionItems: [],
         decisions: [],
+        quotes: [],
       }
     }
 
@@ -277,6 +238,9 @@ Respond ONLY with valid JSON in this exact format:
     }
   ],
   "decisions": ["Decision 1", "Decision 2"],
+  "quotes": [
+    {"text": "The exact quote from the transcript", "speaker": "Name or Unknown"}
+  ],
   "nextMeetingDate": "",
   "adjournmentTime": ""
 }
@@ -286,6 +250,7 @@ Rules:
 - Identify 3-7 main agenda topics from the flow of conversation.
 - Each discussion item should be concise (1-3 sentences), NOT a verbatim quote.
 - Action items must include owner and deadline when mentioned, otherwise use "TBD".
+- Extract 2-5 notable direct quotes from speakers, using their exact words from the transcript.
 - Use neutral, professional language throughout.
 - If information cannot be determined, use empty strings or arrays.`
 
@@ -309,6 +274,7 @@ Rules:
         overview: text,
         actionItems: [],
         decisions: [],
+        quotes: [],
         nextMeetingDate: '',
         adjournmentTime: ''
       }
@@ -323,6 +289,7 @@ Rules:
         overview: result.response || 'Failed to generate minutes',
         actionItems: [],
         decisions: [],
+        quotes: [],
         nextMeetingDate: '',
         adjournmentTime: ''
       }

@@ -15,6 +15,8 @@ export default function SettingsPanel() {
   const [mode, setMode] = useState<'local' | 'cloud'>(settings.transcriptionMode || 'cloud')
   const [selectedModel, setSelectedModel] = useState(settings.whisperModel || 'base')
   const [workerUrl, setWorkerUrl] = useState(settings.workerUrl)
+  const [language, setLanguage] = useState(settings.language || 'auto')
+  const [translateToEnglish, setTranslateToEnglish] = useState(settings.translateToEnglish || false)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
@@ -24,6 +26,8 @@ export default function SettingsPanel() {
     setWorkerUrl(settings.workerUrl)
     setMode(settings.transcriptionMode || 'cloud')
     setSelectedModel(settings.whisperModel || 'base')
+    setLanguage(settings.language || 'auto')
+    setTranslateToEnglish(settings.translateToEnglish || false)
   }, [settings])
 
   useEffect(() => {
@@ -53,7 +57,9 @@ export default function SettingsPanel() {
     await saveSettings({
       workerUrl,
       transcriptionMode: mode,
-      whisperModel: selectedModel
+      whisperModel: selectedModel,
+      language,
+      translateToEnglish
     } as any)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -213,6 +219,47 @@ export default function SettingsPanel() {
             />
           </div>
         )}
+
+        {/* Transcription Language */}
+        <div className="bg-surface rounded-xl p-5 border border-border">
+          <h2 className="font-heading font-semibold text-base mb-3">Transcription Language</h2>
+          <p className="text-xs text-muted mb-4">
+            Select the language of your recordings. Auto-detect works for most cases.
+          </p>
+          <select
+            value={language}
+            onChange={e => {
+              setLanguage(e.target.value)
+              if (e.target.value === 'en' || e.target.value === 'auto') setTranslateToEnglish(false)
+            }}
+            className="w-full px-3 py-2.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-accent"
+          >
+            <option value="auto">Auto-detect</option>
+            <option value="en">English</option>
+            <option value="fr">French / Français</option>
+            <option value="es">Spanish / Español</option>
+            <option value="de">German / Deutsch</option>
+            <option value="pt">Portuguese / Português</option>
+            <option value="af">Afrikaans</option>
+            <option value="zu">Zulu / isiZulu</option>
+            <option value="xh">Xhosa / isiXhosa</option>
+          </select>
+
+          {language !== 'en' && language !== 'auto' && (
+            <label className="flex items-center gap-3 mt-3 p-3 rounded-lg bg-bg border border-border cursor-pointer">
+              <input
+                type="checkbox"
+                checked={translateToEnglish}
+                onChange={e => setTranslateToEnglish(e.target.checked)}
+                className="w-4 h-4 accent-accent"
+              />
+              <div>
+                <p className="text-sm font-medium">Translate to English</p>
+                <p className="text-xs text-muted">Whisper will translate the transcript to English</p>
+              </div>
+            </label>
+          )}
+        </div>
 
         {/* Save button */}
         <button
