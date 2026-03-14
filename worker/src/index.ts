@@ -1,12 +1,17 @@
+import { Buffer } from 'node:buffer'
+
 interface Env {
   AI: any
 }
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
+
+// Chunk size for Whisper: ~900KB keeps us safely under the ~1MB model limit
+const CHUNK_SIZE = 900 * 1024
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -37,7 +42,7 @@ export default {
   },
 }
 
-// ── Transcribe: accepts audio binary, returns transcript ──
+// ── Transcribe: accepts audio binary, chunks large files, returns full transcript ──
 
 async function handleTranscribe(request: Request, env: Env): Promise<Response> {
   try {
@@ -50,24 +55,64 @@ async function handleTranscribe(request: Request, env: Env): Promise<Response> {
       })
     }
 
-    // Workers AI Whisper — accepts raw audio bytes
-    const result = await env.AI.run('@cf/openai/whisper', {
-      audio: [...new Uint8Array(audioData)],
-    })
+    const totalSize = audioData.byteLength
+    const totalChunks = Math.ceil(totalSize / CHUNK_SIZE)
 
-    // Result shape: { text: string, vtt?: string, words?: [...] }
-    const segments = (result.words || []).map((w: any) => ({
-      start: w.start || 0,
-      end: w.end || 0,
-      text: w.word || ''
-    }))
+    // Small file — single pass (under 900KB)
+    if (totalChunks <= 1) {
+      return transcribeSingle(audioData, env)
+    }
 
-    // Group words into sentence-like segments (~10 words each)
-    const grouped = groupWordsIntoSegments(segments, 10)
+    // Large file — chunk and transcribe sequentially
+    const allTexts: string[] = []
+    const allWords: { start: number; end: number; text: string }[] = []
+    let timeOffset = 0
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE
+      const end = Math.min(start + CHUNK_SIZE, totalSize)
+      const chunkBuffer = audioData.slice(start, end)
+
+      try {
+        const encoded = Buffer.from(chunkBuffer).toString('base64')
+
+        const result = await env.AI.run('@cf/openai/whisper', {
+          audio: encoded,
+        })
+
+        if (result.text) {
+          allTexts.push(result.text)
+        }
+
+        // Collect words with time offset for sequential chunks
+        if (result.words && result.words.length > 0) {
+          const chunkWords = result.words.map((w: any) => ({
+            start: (w.start || 0) + timeOffset,
+            end: (w.end || 0) + timeOffset,
+            text: w.word || ''
+          }))
+          allWords.push(...chunkWords)
+
+          // Estimate time offset: use the last word's end time from this chunk
+          const lastWord = result.words[result.words.length - 1]
+          timeOffset += (lastWord.end || 30)
+        } else {
+          // No words returned — estimate ~30s per chunk
+          timeOffset += 30
+        }
+      } catch (chunkErr: any) {
+        allTexts.push(`[chunk ${i + 1}/${totalChunks} failed: ${chunkErr.message}]`)
+        timeOffset += 30
+      }
+    }
+
+    const fullText = allTexts.join(' ')
+    const grouped = groupWordsIntoSegments(allWords, 10)
 
     return new Response(JSON.stringify({
       segments: grouped,
-      fullText: result.text || '',
+      fullText,
+      chunks: totalChunks,
     }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
@@ -77,6 +122,31 @@ async function handleTranscribe(request: Request, env: Env): Promise<Response> {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     })
   }
+}
+
+// Single-pass transcription for small files
+async function transcribeSingle(audioData: ArrayBuffer, env: Env): Promise<Response> {
+  const encoded = Buffer.from(audioData).toString('base64')
+
+  const result = await env.AI.run('@cf/openai/whisper', {
+    audio: encoded,
+  })
+
+  const segments = (result.words || []).map((w: any) => ({
+    start: w.start || 0,
+    end: w.end || 0,
+    text: w.word || ''
+  }))
+
+  const grouped = groupWordsIntoSegments(segments, 10)
+
+  return new Response(JSON.stringify({
+    segments: grouped,
+    fullText: result.text || '',
+    chunks: 1,
+  }), {
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  })
 }
 
 function groupWordsIntoSegments(words: { start: number; end: number; text: string }[], groupSize: number) {
