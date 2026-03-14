@@ -35,7 +35,7 @@ jobs:
       - name: Compile whisper-cli (arm64)
         run: |
           mkdir -p binaries/whisper/mac-arm64
-          WHISPER_VERSION="1.7.5"
+          WHISPER_VERSION="1.8.3"
           git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
           cd /tmp/whisper
           cmake -B build -DCMAKE_OSX_ARCHITECTURES=arm64
@@ -73,7 +73,7 @@ jobs:
       - name: Compile whisper-cli (x86_64)
         run: |
           mkdir -p binaries/whisper/mac-x64
-          WHISPER_VERSION="1.7.5"
+          WHISPER_VERSION="1.8.3"
           git clone --depth 1 --branch v${WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp /tmp/whisper
           cd /tmp/whisper
           cmake -B build
@@ -112,8 +112,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p binaries/whisper/win-x64
-          WHISPER_VERSION="1.7.5"
-          curl -L "https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_VERSION}/whisper-bin-x64.zip" -o /tmp/whisper.zip
+          WHISPER_VERSION="1.8.3"
+          curl -fL "https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_VERSION}/whisper-bin-x64.zip" -o /tmp/whisper.zip
           unzip /tmp/whisper.zip -d /tmp/whisper-bin
           # Find whisper-cli.exe wherever it lands in the archive
           find /tmp/whisper-bin -name "whisper-cli.exe" -exec cp {} binaries/whisper/win-x64/whisper-cli.exe \; || \
