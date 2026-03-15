@@ -137,7 +137,7 @@ export class CalendarSync {
     try {
       const ses = session.fromPartition(partitionName)
       const res = await ses.fetch(`${this.scriptUrl}?action=status`, {
-        redirect: 'follow' as RequestRedirect
+        redirect: 'follow' as any
       })
 
       // If Google redirects to sign-in page, the session expired
@@ -187,7 +187,7 @@ export class CalendarSync {
         try {
           const ses = session.fromPartition(account.partition)
           const res = await ses.fetch(`${this.scriptUrl}?action=upcoming&hours=24`, {
-            redirect: 'follow' as RequestRedirect
+            redirect: 'follow' as any
           })
 
           const text = await res.text()
