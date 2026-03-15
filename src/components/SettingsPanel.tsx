@@ -230,7 +230,7 @@ export default function SettingsPanel() {
             <div className="flex flex-col gap-2">
               <input
                 type="url"
-                placeholder="https://meeting-summarizer.your-subdomain.workers.dev"
+                placeholder="https://meeting-summarizer.laurent-7ad.workers.dev"
                 value={workerUrl}
                 onChange={(e) => setWorkerUrl(e.target.value)}
                 className="px-3 py-2.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-accent placeholder:text-muted"
@@ -266,7 +266,7 @@ export default function SettingsPanel() {
             </p>
             <input
               type="url"
-              placeholder="https://meeting-summarizer.your-subdomain.workers.dev"
+              placeholder="https://meeting-summarizer.laurent-7ad.workers.dev"
               value={workerUrl}
               onChange={(e) => setWorkerUrl(e.target.value)}
               className="px-3 py-2.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:border-accent placeholder:text-muted w-full"

@@ -99,6 +99,43 @@ const api = {
     return () => { ipcRenderer.removeListener('meeting-reminder', handler) }
   },
 
+  // ── Mini Recorder ──
+  showMiniRecorder: () =>
+    ipcRenderer.invoke('show-mini-recorder'),
+
+  hideMiniRecorder: () =>
+    ipcRenderer.invoke('hide-mini-recorder'),
+
+  sendMiniState: (state: { time: number; screenshotCount: number }) =>
+    ipcRenderer.send('mini-state-update', state),
+
+  miniStopRecording: () =>
+    ipcRenderer.send('mini-stop-recording'),
+
+  miniTakeScreenshot: () =>
+    ipcRenderer.send('mini-take-screenshot'),
+
+  miniShowMain: () =>
+    ipcRenderer.send('mini-show-main'),
+
+  onMiniStateUpdate: (callback: (state: { time: number; screenshotCount: number }) => void): (() => void) => {
+    const handler = (_e: any, data: any) => callback(data)
+    ipcRenderer.on('mini-state-update', handler)
+    return () => { ipcRenderer.removeListener('mini-state-update', handler) }
+  },
+
+  onTriggerStopRecording: (callback: () => void): (() => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('trigger-stop-recording', handler)
+    return () => { ipcRenderer.removeListener('trigger-stop-recording', handler) }
+  },
+
+  onTriggerTakeScreenshot: (callback: () => void): (() => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('trigger-take-screenshot', handler)
+    return () => { ipcRenderer.removeListener('trigger-take-screenshot', handler) }
+  },
+
   // ── Utilities ──
   openFolder: (meetingId: string) =>
     ipcRenderer.invoke('open-folder', meetingId),

@@ -9,6 +9,12 @@ export default defineConfig({
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        mini: resolve(__dirname, 'mini-recorder.html'),
+      },
+    },
   },
   resolve: {
     alias: {

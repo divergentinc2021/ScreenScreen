@@ -3,7 +3,7 @@ import { join } from 'path'
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs'
 
 const DEFAULT_SETTINGS = {
-  workerUrl: '',
+  workerUrl: 'https://meeting-summarizer.laurent-7ad.workers.dev',
   transcriptionMode: 'cloud' as const,
   whisperModel: 'base' as const
 }

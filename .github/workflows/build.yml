@@ -154,11 +154,10 @@ jobs:
             ## DiScreenRecorder ${{ github.ref_name }}
 
             ### What's New
-            - **Sign in with Google** — any Google account can connect their calendar directly
-            - Multi-calendar support — add multiple Google accounts, events merged into one feed
-            - Apps Script runs as the accessing user (reads THEIR calendar, not the deployer's)
-            - No OAuth client IDs, no tokens — browser-based Google sign-in with persistent sessions
-            - Session-based auth using Electron partition cookies (persists across app restarts)
+            - **Mini Recorder** — floating always-on-top pill with timer, stop, and screenshot controls while you're in your meeting
+            - Main window auto-hides when recording starts, restores when you stop
+            - **Pre-configured Worker URL** — no more manual setup, transcription works out of the box
+            - Google Calendar sign-in for any Google account (multi-calendar support)
 
             ### Downloads
             - **macOS Apple Silicon (M1/M2/M3/M4):** `DiScreenRecorder-*-arm64.dmg`
@@ -167,7 +166,6 @@ jobs:
 
             ### Requirements
             - macOS 12+ or Windows 10+
-            - Cloudflare Worker URL (for cloud transcription & AI summaries)
             - Optional: Google account sign-in for calendar sync
           files: |
             artifacts/**/*.dmg

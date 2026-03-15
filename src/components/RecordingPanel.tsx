@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useMeetingStore } from '../stores/meetingStore'
 
 type Source = { id: string; name: string; thumbnail: string }
@@ -19,6 +19,21 @@ export default function RecordingPanel() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
   const meetingIdRef = useRef<string | null>(null)
+  const screenshotCountRef = useRef(0)
+
+  // Listen for commands from mini recorder (via main process)
+  const stopRecordingRef = useRef<(() => void) | null>(null)
+  const takeScreenshotRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    const unsubStop = window.api.onTriggerStopRecording(() => {
+      stopRecordingRef.current?.()
+    })
+    const unsubScreenshot = window.api.onTriggerTakeScreenshot(() => {
+      takeScreenshotRef.current?.()
+    })
+    return () => { unsubStop(); unsubScreenshot() }
+  }, [])
 
   const loadSources = async () => {
     const srcs = await window.api.getSources()
@@ -96,9 +111,15 @@ export default function RecordingPanel() {
       setRecording(true)
       setRecordingTime(0)
       setScreenshotCount(0)
+      screenshotCountRef.current = 0
+
+      // Show mini recorder and hide main window
+      window.api.showMiniRecorder()
 
       timerRef.current = setInterval(() => {
-        setRecordingTime(Math.floor((Date.now() - startTimeRef.current) / 1000))
+        const time = Math.floor((Date.now() - startTimeRef.current) / 1000)
+        setRecordingTime(time)
+        window.api.sendMiniState({ time, screenshotCount: screenshotCountRef.current })
       }, 1000)
 
     } catch (err: any) {
@@ -125,9 +146,13 @@ export default function RecordingPanel() {
           meetingIdRef.current || undefined
         )
 
+        // Close mini recorder and restore main window
+        window.api.hideMiniRecorder()
+
         setRecording(false)
         setRecordingTime(0)
         setScreenshotCount(0)
+        screenshotCountRef.current = 0
         meetingIdRef.current = null
         setTitle('')
         await loadMeetings()
@@ -140,13 +165,19 @@ export default function RecordingPanel() {
     })
   }, [title])
 
+  // Keep ref in sync so mini recorder commands can call it
+  stopRecordingRef.current = stopRecording
+
   const takeScreenshot = useCallback(async () => {
     if (!meetingIdRef.current) return
 
     try {
       const timestamp = Math.floor((Date.now() - startTimeRef.current) / 1000)
       await window.api.takeScreenshot(meetingIdRef.current, timestamp)
-      setScreenshotCount(prev => prev + 1)
+      setScreenshotCount(prev => {
+        screenshotCountRef.current = prev + 1
+        return prev + 1
+      })
 
       // Flash effect
       setScreenshotFlash(true)
@@ -155,6 +186,9 @@ export default function RecordingPanel() {
       console.error('Screenshot failed:', err.message)
     }
   }, [])
+
+  // Keep ref in sync so mini recorder commands can call it
+  takeScreenshotRef.current = takeScreenshot
 
   const selectSource = (source: Source) => {
     setSelectedSource(source)

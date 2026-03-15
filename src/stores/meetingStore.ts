@@ -112,7 +112,7 @@ export const useMeetingStore = create<MeetingStore>((set) => ({
   transcriptionProgress: null,
   setTranscriptionProgress: (p) => set({ transcriptionProgress: p }),
 
-  settings: { workerUrl: '', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false } as Settings,
+  settings: { workerUrl: 'https://meeting-summarizer.laurent-7ad.workers.dev', transcriptionMode: 'cloud', whisperModel: 'base', language: 'auto', translateToEnglish: false } as Settings,
   loadSettings: async () => {
     const settings = await window.api.getSettings()
     set({ settings: settings as Settings })

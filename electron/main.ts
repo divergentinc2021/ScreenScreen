@@ -8,6 +8,7 @@ import { exportMarkdown, exportClipboard, exportPDF, exportDocx } from './minute
 import { CalendarSync } from './calendar'
 
 let mainWindow: BrowserWindow | null = null
+let miniWindow: BrowserWindow | null = null
 const storage = new Storage()
 const transcriber = new Transcriber()
 let localTranscriber: LocalTranscriber
@@ -376,6 +377,80 @@ ipcMain.handle('calendar-stop-polling', async () => {
 
 ipcMain.handle('calendar-is-connected', async () => {
   return calendarSync.isConnected()
+})
+
+// ── Mini Recorder ──
+
+function createMiniRecorder() {
+  if (miniWindow) {
+    miniWindow.focus()
+    return
+  }
+
+  miniWindow = new BrowserWindow({
+    width: 340,
+    height: 64,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: true,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    }
+  })
+
+  // Position at top-center of screen
+  const { screen } = require('electron')
+  const display = screen.getPrimaryDisplay()
+  const x = Math.round((display.workArea.width - 340) / 2 + display.workArea.x)
+  const y = display.workArea.y + 12
+  miniWindow.setPosition(x, y)
+
+  if (process.env.VITE_DEV_SERVER_URL) {
+    miniWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}/mini-recorder.html`)
+  } else {
+    miniWindow.loadFile(join(__dirname, '../renderer/mini-recorder.html'))
+  }
+
+  miniWindow.on('closed', () => { miniWindow = null })
+}
+
+ipcMain.handle('show-mini-recorder', async () => {
+  createMiniRecorder()
+  mainWindow?.hide()
+})
+
+ipcMain.handle('hide-mini-recorder', async () => {
+  if (miniWindow) {
+    miniWindow.close()
+    miniWindow = null
+  }
+  mainWindow?.show()
+  mainWindow?.focus()
+})
+
+// Forward state from main renderer to mini window
+ipcMain.on('mini-state-update', (_e, state) => {
+  miniWindow?.webContents.send('mini-state-update', state)
+})
+
+// Forward commands from mini window to main renderer
+ipcMain.on('mini-stop-recording', () => {
+  mainWindow?.webContents.send('trigger-stop-recording')
+})
+
+ipcMain.on('mini-take-screenshot', () => {
+  mainWindow?.webContents.send('trigger-take-screenshot')
+})
+
+ipcMain.on('mini-show-main', () => {
+  mainWindow?.show()
+  mainWindow?.focus()
 })
 
 // ── Utilities ──

@@ -1,6 +1,6 @@
 {
   "name": "discreenrecorder",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Meeting recorder with local + cloud transcription, AI summaries, and professional meeting minutes",
   "main": "dist/electron/main.js",
   "scripts": {

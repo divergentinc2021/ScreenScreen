@@ -186,6 +186,17 @@ declare global {
       calendarIsConnected: () => Promise<boolean>
       onMeetingReminder: (callback: (event: CalendarEvent) => void) => () => void
 
+      // Mini Recorder
+      showMiniRecorder: () => Promise<void>
+      hideMiniRecorder: () => Promise<void>
+      sendMiniState: (state: { time: number; screenshotCount: number }) => void
+      miniStopRecording: () => void
+      miniTakeScreenshot: () => void
+      miniShowMain: () => void
+      onMiniStateUpdate: (callback: (state: { time: number; screenshotCount: number }) => void) => () => void
+      onTriggerStopRecording: (callback: () => void) => () => void
+      onTriggerTakeScreenshot: (callback: () => void) => () => void
+
       // Utilities
       openFolder: (meetingId: string) => Promise<void>
       onTranscriptionProgress: (callback: (data: { meetingId: string; status: string; progress?: number }) => void) => () => void
