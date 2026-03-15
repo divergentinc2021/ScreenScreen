@@ -2,22 +2,29 @@
  * DiScreenRecorder — Google Calendar Integration
  *
  * Deploy as Web App:
- *   Execute as: Me (your Google account)
- *   Who has access: Anyone (or Anyone with link)
+ *   Execute as: User accessing the web app
+ *   Who has access: Anyone
  *
- * The Electron app calls this script URL to get upcoming calendar events.
- * No OAuth needed in the app — Apps Script runs under your own Google account.
+ * When a user visits this URL in their browser, they authorize the script
+ * to read their Google Calendar. The script runs as THEM and returns their events.
+ *
+ * The Electron app opens a BrowserWindow for sign-in, then uses the authenticated
+ * session to poll for events — no OAuth client IDs or tokens needed.
  */
 
 function doGet(e) {
-  const action = (e && e.parameter && e.parameter.action) || 'upcoming'
+  var action = (e && e.parameter && e.parameter.action) || 'upcoming'
 
   try {
     switch (action) {
       case 'upcoming':
         return jsonResponse(getUpcomingEvents(e))
       case 'status':
-        return jsonResponse({ status: 'ok', email: Session.getActiveUser().getEmail() })
+        return jsonResponse({
+          status: 'ok',
+          email: Session.getActiveUser().getEmail(),
+          timestamp: new Date().toISOString()
+        })
       default:
         return jsonResponse({ error: 'Unknown action: ' + action }, 400)
     }
@@ -32,15 +39,17 @@ function doPost(e) {
 
 /**
  * Get upcoming events in the next N hours (default 24).
+ * Runs as the accessing user — reads THEIR calendar.
  */
 function getUpcomingEvents(e) {
-  const hours = parseInt((e && e.parameter && e.parameter.hours) || '24', 10)
-  const now = new Date()
-  const future = new Date(now.getTime() + hours * 60 * 60 * 1000)
+  var hours = parseInt((e && e.parameter && e.parameter.hours) || '24', 10)
+  var now = new Date()
+  var future = new Date(now.getTime() + hours * 60 * 60 * 1000)
 
-  const events = CalendarApp.getDefaultCalendar().getEvents(now, future)
+  var events = CalendarApp.getDefaultCalendar().getEvents(now, future)
 
   return {
+    email: Session.getActiveUser().getEmail(),
     events: events.map(function(event) {
       var meetingUrl = extractMeetingUrl(event)
       return {
@@ -70,9 +79,7 @@ function extractMeetingUrl(event) {
   url = findMeetingUrl(desc)
   if (url) return url
 
-  // Check for Google Meet (hangout link)
-  // In Apps Script, conference data isn't directly accessible via CalendarApp,
-  // but we can use the Advanced Calendar Service
+  // Check for Google Meet (hangout link) via Advanced Calendar Service
   try {
     var calEvent = Calendar.Events.get('primary', event.getId().replace(/@google.com$/, ''))
     if (calEvent.hangoutLink) return calEvent.hangoutLink
@@ -121,7 +128,7 @@ function detectPlatform(url) {
 }
 
 /**
- * Return JSON response with CORS headers.
+ * Return JSON response.
  */
 function jsonResponse(data, code) {
   return ContentService

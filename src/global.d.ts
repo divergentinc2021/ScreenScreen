@@ -110,16 +110,17 @@ type CalendarEvent = {
   platform?: 'zoom' | 'teams' | 'meet' | 'other'
 }
 
-type CalendarSource = {
+type CalendarAccount = {
   name: string
-  url: string
+  partition: string
 }
 
 type CalendarSettings = {
   enabled: boolean
   autoRecord: boolean
   reminderMinutes: number
-  sources: CalendarSource[]
+  accounts: CalendarAccount[]
+  scriptUrl?: string
 }
 
 // ── Meeting detail ──
@@ -178,7 +179,9 @@ declare global {
       deleteScreenshot: (meetingId: string, filename: string) => Promise<void>
 
       // Calendar
-      testCalendarConnection: (url: string) => Promise<{ success: boolean; email?: string; error?: string }>
+      calendarSignIn: (partition: string) => Promise<{ success: boolean; email?: string; error?: string }>
+      calendarTestSession: (partition: string) => Promise<{ success: boolean; email?: string; error?: string }>
+      calendarRemoveSession: (partition: string) => Promise<void>
       getUpcomingEvents: () => Promise<CalendarEvent[]>
       calendarIsConnected: () => Promise<boolean>
       onMeetingReminder: (callback: (event: CalendarEvent) => void) => () => void

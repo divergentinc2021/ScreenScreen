@@ -44,8 +44,11 @@ app.whenReady().then(() => {
 
   // Start calendar polling if enabled
   const settings = storage.getSettings()
-  if (settings.calendar?.sources?.length) {
-    calendarSync.setSources(settings.calendar.sources)
+  if (settings.calendar?.scriptUrl) {
+    calendarSync.setScriptUrl(settings.calendar.scriptUrl)
+  }
+  if (settings.calendar?.accounts?.length) {
+    calendarSync.setAccounts(settings.calendar.accounts)
   }
   if (settings.calendar?.enabled && calendarSync.isConnected()) {
     calendarSync.startPolling(settings.calendar.reminderMinutes || 5)
@@ -305,16 +308,19 @@ ipcMain.handle('get-settings', async () => {
 
 ipcMain.handle('save-settings', async (_e, settings: any) => {
   storage.saveSettings(settings)
-  // Update calendar sources
-  if (settings.calendar?.sources?.length) {
-    calendarSync.setSources(settings.calendar.sources)
+  // Update calendar accounts
+  if (settings.calendar?.scriptUrl) {
+    calendarSync.setScriptUrl(settings.calendar.scriptUrl)
+  }
+  if (settings.calendar?.accounts?.length) {
+    calendarSync.setAccounts(settings.calendar.accounts)
     if (settings.calendar.enabled) {
       calendarSync.startPolling(settings.calendar.reminderMinutes || 5)
     } else {
       calendarSync.stopPolling()
     }
   } else {
-    calendarSync.setSources([])
+    calendarSync.setAccounts([])
     calendarSync.stopPolling()
   }
 })
@@ -344,8 +350,16 @@ ipcMain.handle('delete-screenshot', async (_e, meetingId: string, filename: stri
 
 // ── Calendar ──
 
-ipcMain.handle('test-calendar-connection', async (_e, url: string) => {
-  return calendarSync.testConnection(url)
+ipcMain.handle('calendar-sign-in', async (_e, partition: string) => {
+  return calendarSync.signIn(partition)
+})
+
+ipcMain.handle('calendar-test-session', async (_e, partition: string) => {
+  return calendarSync.testSession(partition)
+})
+
+ipcMain.handle('calendar-remove-session', async (_e, partition: string) => {
+  return calendarSync.removeSession(partition)
 })
 
 ipcMain.handle('get-upcoming-events', async () => {

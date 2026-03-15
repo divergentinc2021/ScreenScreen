@@ -154,10 +154,11 @@ jobs:
             ## DiScreenRecorder ${{ github.ref_name }}
 
             ### What's New
-            - Multi-calendar support — connect multiple Google accounts via Apps Script
-            - Replaced OAuth with Google Apps Script integration (no client IDs needed)
-            - Removed googleapis dependency (~50MB smaller)
-            - Fixed CI/CD: whisper.cpp v1.8.3, cross-compile fixes, runner updates
+            - **Sign in with Google** — any Google account can connect their calendar directly
+            - Multi-calendar support — add multiple Google accounts, events merged into one feed
+            - Apps Script runs as the accessing user (reads THEIR calendar, not the deployer's)
+            - No OAuth client IDs, no tokens — browser-based Google sign-in with persistent sessions
+            - Session-based auth using Electron partition cookies (persists across app restarts)
 
             ### Downloads
             - **macOS Apple Silicon (M1/M2/M3/M4):** `DiScreenRecorder-*-arm64.dmg`
@@ -167,11 +168,12 @@ jobs:
             ### Requirements
             - macOS 12+ or Windows 10+
             - Cloudflare Worker URL (for cloud transcription & AI summaries)
-            - Optional: Google Apps Script deployment (for calendar sync)
+            - Optional: Google account sign-in for calendar sync
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.exe
           draft: false
           prerelease: false
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

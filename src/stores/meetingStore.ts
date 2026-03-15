@@ -41,16 +41,17 @@ type MeetingDetail = {
   audioPath: string
 }
 
-type CalendarSource = {
+type CalendarAccount = {
   name: string
-  url: string
+  partition: string
 }
 
 type CalendarSettings = {
   enabled: boolean
   autoRecord: boolean
   reminderMinutes: number
-  sources: CalendarSource[]
+  accounts: CalendarAccount[]
+  scriptUrl?: string
 }
 
 type Settings = {

@@ -78,8 +78,14 @@ const api = {
     ipcRenderer.invoke('delete-screenshot', meetingId, filename),
 
   // ── Calendar ──
-  testCalendarConnection: (url: string) =>
-    ipcRenderer.invoke('test-calendar-connection', url),
+  calendarSignIn: (partition: string) =>
+    ipcRenderer.invoke('calendar-sign-in', partition),
+
+  calendarTestSession: (partition: string) =>
+    ipcRenderer.invoke('calendar-test-session', partition),
+
+  calendarRemoveSession: (partition: string) =>
+    ipcRenderer.invoke('calendar-remove-session', partition),
 
   getUpcomingEvents: () =>
     ipcRenderer.invoke('get-upcoming-events'),
